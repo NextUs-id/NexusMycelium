@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+
+# runtime data (memory, sessions, snapshots, traces)
+data/*
+!data/.gitkeep
+
+# per-install user config
+user/config.yaml

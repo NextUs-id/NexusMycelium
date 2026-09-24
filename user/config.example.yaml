@@ -1,0 +1,4 @@
+# Salin ke user/config.yaml (di-gitignore). File ini tidak pernah ditimpa oleh update.
+plugins:
+  example-hello:
+    who: "nexus"

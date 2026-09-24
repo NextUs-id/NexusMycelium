@@ -1,0 +1,13 @@
+{
+  "name": "@nexus/plugin-example-hello",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal example plugin. Copy this to start a new plugin.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@nexus/kernel": "workspace:*"
+  }
+}

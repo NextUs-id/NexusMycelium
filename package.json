@@ -1,0 +1,25 @@
+{
+  "name": "nexus-agent",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Nexus agent: everything is a plugin, gated self-evolution, efficiency first.",
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "biome check . && tsc --noEmit -p tsconfig.json && vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

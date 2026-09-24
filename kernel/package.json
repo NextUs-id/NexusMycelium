@@ -1,0 +1,13 @@
+{
+  "name": "@nexus/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Locked micro-kernel: plugin loader, registry, event bus, permissions, gate.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}
