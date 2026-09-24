@@ -16,6 +16,7 @@ Butuh Node.js ≥ 20 dan pnpm `12.6.0` sesuai `packageManager`.
 - `docs/PLUGIN_API.md` — kontrak plugin
 - `docs/AGENT_WORKFLOW.md` — SOP kerja agent, validasi, gate, dan serah terima
 - `task-dashboard.html` — dashboard status task; buka lewat server lokal
+- `docs/NAME_RESEARCH.md` — collision screen Task 0.1 dan rekomendasi nama
 
 ## Status
 Fase 0 selesai (scaffold). Baseline kernel (manifest, event bus, registry) sudah ada dengan tes. Lanjut ke `TASKS.md` → 0.1, 0.4, 1.x.
