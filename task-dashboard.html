@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Dashboard status task Nexus Agent dari TASKS.md.">
+  <title>Nexus Agent — Task Dashboard</title>
+  <style>
+    :root {
+      --bg: #101820;
+      --bg-deep: #0c1218;
+      --panel: #17232d;
+      --panel-2: #1c2b36;
+      --line: #2c414f;
+      --line-soft: #223541;
+      --text: #e7eef2;
+      --muted: #9aabb7;
+      --faint: #708592;
+      --accent: #e4a66b;
+      --accent-ink: #1b1711;
+      --done: #83c7a0;
+      --active: #e4a66b;
+      --todo: #91a6b2;
+      --danger: #df8f86;
+      --radius: 14px;
+      --shadow: 0 18px 50px rgba(0,0,0,.22);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg-deep); scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 300px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow-x: clip;
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    [hidden] { display: none; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .app { width: min(1440px, 100%); margin: 0 auto; padding: 0 28px 56px; }
+    .topbar {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 32px; height: 32px; flex: 0 0 auto;
+      display: grid; place-items: center;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+    }
+    .brand-copy { min-width: 0; }
+    .brand-title { font-size: 13px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .brand-sub { color: var(--muted); font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 9px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease;
+    }
+    .btn:hover { background: var(--panel-2); border-color: #466172; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { background: #efb47d; border-color: #efb47d; }
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 30px;
+      padding: 54px 0 34px;
+    }
+    .kicker { color: var(--accent); font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 10px 0 12px; max-width: 760px; font-size: clamp(32px, 5vw, 62px); line-height: 1.02; letter-spacing: -.045em; }
+    .lede { max-width: 650px; margin: 0; color: var(--muted); font-size: 16px; }
+    .snapshot { color: var(--faint); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+    .snapshot strong { color: var(--muted); font-weight: 650; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+    .stat { min-width: 0; padding: 19px 20px 18px; border-right: 1px solid var(--line-soft); }
+    .stat:last-child { border-right: 0; }
+    .stat-label { display: block; color: var(--muted); font-size: 12px; }
+    .stat-value { display: block; margin-top: 5px; font: 700 30px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.05em; }
+    .stat-note { display: block; min-height: 1.2em; margin-top: 7px; color: var(--faint); font-size: 11px; }
+    .progress-stat { display: flex; align-items: center; gap: 14px; }
+    .ring {
+      --pct: 0;
+      width: 56px; height: 56px; flex: 0 0 auto;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--line) 0);
+      position: relative;
+    }
+    .ring::after { content: ""; position: absolute; inset: 6px; border-radius: inherit; background: var(--panel); }
+    .ring span { position: relative; z-index: 1; font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.5fr) minmax(150px, .7fr) minmax(150px, .7fr) auto;
+      gap: 12px;
+      align-items: end;
+      padding: 18px;
+      border: 1px solid var(--line-soft);
+      background: rgba(23,35,45,.72);
+      margin-bottom: 30px;
+    }
+    .field { min-width: 0; }
+    .field label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .field input, .field select {
+      width: 100%; min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg-deep);
+      color: var(--text);
+      padding: 8px 11px;
+    }
+    .field input::placeholder { color: #6e818d; }
+    .field input:hover, .field select:hover { border-color: #496273; }
+    .status-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .status-tab {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--bg-deep);
+      color: var(--muted);
+      padding: 8px 11px;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .status-tab:hover, .status-tab[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: #293743; }
+    .status-tab[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+    .toolbar-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 13px; }
+    .result-count { color: var(--muted); font-size: 12px; }
+    .result-count strong { color: var(--text); }
+    .phase-list { display: grid; gap: 18px; }
+    .phase { border-top: 1px solid var(--line); padding-top: 17px; }
+    .phase-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .phase-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+    .phase-number { color: var(--accent); font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .phase-name { font-size: 17px; font-weight: 750; letter-spacing: -.015em; overflow-wrap: anywhere; }
+    .phase-meta { color: var(--faint); font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }
+    .phase-bar { height: 4px; background: var(--line-soft); margin: 0 0 12px; overflow: hidden; }
+    .phase-bar span { display: block; height: 100%; background: var(--accent); }
+    .task-list { display: grid; gap: 7px; }
+    .task {
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      padding: 13px 14px;
+      border: 1px solid var(--line-soft);
+      background: rgba(23,35,45,.65);
+      border-radius: 10px;
+    }
+    .task:hover { border-color: #405968; background: var(--panel); }
+    .task-id { color: var(--muted); font: 700 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding-top: 1px; }
+    .task-main { min-width: 0; }
+    .task-title { color: var(--text); font-weight: 620; overflow-wrap: anywhere; }
+    .task.done .task-title { color: var(--muted); text-decoration: line-through; text-decoration-color: #6d8791; }
+    .task-criteria { margin-top: 5px; color: var(--faint); font-size: 12px; overflow-wrap: anywhere; }
+    .task-criteria::before { content: "Kriteria: "; color: var(--muted); font-weight: 650; }
+    .task-side { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 8px; font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+    .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .badge-done { color: var(--done); background: rgba(131,199,160,.1); }
+    .badge-active { color: var(--active); background: rgba(228,166,107,.12); }
+    .badge-todo { color: var(--todo); background: rgba(145,166,178,.1); }
+    .size { color: var(--faint); font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .empty {
+      padding: 42px 20px;
+      border: 1px dashed var(--line);
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty strong { display: block; color: var(--text); margin-bottom: 5px; }
+    .footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 12px; }
+    .footer code { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .toast { position: fixed; right: 20px; bottom: 20px; max-width: min(360px, calc(100% - 40px)); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--text); box-shadow: var(--shadow); font-size: 12px; z-index: 5; }
+    @media (max-width: 850px) {
+      .app { padding: 0 18px 40px; }
+      .intro { grid-template-columns: 1fr; gap: 18px; padding-top: 40px; }
+      .snapshot { text-align: left; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+      .controls { grid-template-columns: 1fr 1fr; }
+      .controls .field:first-child, .controls .status-field { grid-column: 1 / -1; }
+    }
+    @media (max-width: 560px) {
+      .app { padding-inline: 12px; }
+      .topbar { min-height: 60px; align-items: flex-start; padding: 13px 0; }
+      .brand-sub { display: none; }
+      .top-actions { gap: 5px; }
+      .btn { padding: 7px 9px; font-size: 11px; }
+      h1 { font-size: 38px; }
+      .lede { font-size: 14px; }
+      .summary { grid-template-columns: 1fr 1fr; }
+      .stat { padding: 15px 13px; }
+      .stat-value { font-size: 25px; }
+      .progress-stat { gap: 9px; }
+      .ring { width: 45px; height: 45px; }
+      .ring::after { inset: 5px; }
+      .controls { grid-template-columns: 1fr; padding: 13px; }
+      .controls .field:first-child, .controls .status-field { grid-column: auto; }
+      .task { grid-template-columns: 45px minmax(0, 1fr); gap: 9px; }
+      .task-side { grid-column: 2; justify-content: flex-start; }
+      .phase-head { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .phase-meta { text-align: left; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms; animation-duration: .01ms; }
+    }
+    @media print {
+      :root { --bg: #fff; --bg-deep: #fff; --panel: #fff; --panel-2: #f4f4f4; --line: #bbb; --line-soft: #ddd; --text: #111; --muted: #444; --faint: #666; }
+      .top-actions, .controls, .toast { display: none; }
+      .app { width: 100%; padding: 20px; }
+      .intro { padding: 20px 0; }
+      h1 { font-size: 34px; }
+      .summary, .task, .phase { box-shadow: none; }
+      .task { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">NX</div>
+        <div class="brand-copy">
+          <div class="brand-title">Nexus execution map</div>
+          <div class="brand-sub" id="sourcePath">nexus-scaffold / TASKS.md</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn" id="reloadBtn" type="button">Muat ulang sumber</button>
+        <button class="btn btn-primary" id="importBtn" type="button">Impor TASKS.md</button>
+        <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" hidden>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <div>
+          <div class="kicker">Scaffold status / source of truth</div>
+          <h1 id="pageTitle">Semua task, satu peta.</h1>
+          <p class="lede">Status langsung dari checklist Nexus Agent. Filter cepat, cari task, dan lihat fase mana yang sudah bergerak.</p>
+        </div>
+        <div class="snapshot">
+          <div>Sumber</div>
+          <strong>TASKS.md</strong>
+          <div id="sourceState">snapshot tertanam</div>
+        </div>
+      </section>
+
+      <section class="summary" aria-label="Ringkasan progress">
+        <div class="stat">
+          <span class="stat-label">Total task</span>
+          <strong class="stat-value" id="totalStat">—</strong>
+          <span class="stat-note">seluruh fase</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Selesai</span>
+          <strong class="stat-value" id="doneStat" style="color: var(--done)">—</strong>
+          <span class="stat-note">tercentang di TASKS.md</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Sedang dikerjakan</span>
+          <strong class="stat-value" id="activeStat" style="color: var(--active)">—</strong>
+          <span class="stat-note">marker [~] atau [&gt;]</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Progress</span>
+          <div class="progress-stat">
+            <div class="ring" id="progressRing" role="img" aria-label="Progress percentage"><span id="progressValue">—</span></div>
+            <div><strong class="stat-value" id="progressStat" style="font-size: 22px">—</strong><span class="stat-note">dari seluruh task</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Filter task">
+        <div class="field">
+          <label for="searchInput">Cari task</label>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="ID, judul, kriteria, atau fase">
+        </div>
+        <fieldset class="field status-field">
+          <legend>Status</legend>
+          <div class="status-tabs">
+            <button class="status-tab" type="button" data-status="all" aria-pressed="true">Semua</button>
+            <button class="status-tab" type="button" data-status="done" aria-pressed="false">Selesai</button>
+            <button class="status-tab" type="button" data-status="active" aria-pressed="false">Aktif</button>
+            <button class="status-tab" type="button" data-status="todo" aria-pressed="false">Belum</button>
+          </div>
+        </fieldset>
+        <div class="field">
+          <label for="phaseSelect">Fase</label>
+          <select id="phaseSelect"><option value="all">Semua fase</option></select>
+        </div>
+        <button class="btn" id="clearBtn" type="button">Reset filter</button>
+      </section>
+
+      <div class="toolbar-row">
+        <div class="result-count" id="resultCount" aria-live="polite">Menyiapkan task…</div>
+        <div class="result-count">Status aktif: <strong id="activeSummary">—</strong></div>
+      </div>
+      <section class="phase-list" id="phaseList" aria-label="Daftar task per fase"></section>
+      <div class="empty" id="emptyState" hidden><strong>Tidak ada task yang cocok.</strong><span>Ubah kata pencarian atau reset filter.</span></div>
+    </main>
+
+    <footer class="footer">
+      <div>Status dibaca dari <code>TASKS.md</code>. Tanda <code>[x]</code> selesai, <code>[~]</code>/<code>[&gt;]</code> sedang dikerjakan, <code>[ ]</code> belum.</div>
+      <div id="footerSource">Snapshot tertanam · gunakan “Muat ulang sumber” setelah TASKS.md berubah.</div>
+    </footer>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script id="embedded-data" type="application/json">{"phases":[{"id":"0","label":"Fondasi","raw":"Fase 0 — Fondasi","milestone":""},{"id":"1","label":"Kernel","raw":"Fase 1 — Kernel (🔒)","milestone":"M1: kernel jalan, plugin bisa hot-load."},{"id":"2","label":"Agent inti","raw":"Fase 2 — Agent inti","milestone":"M2: agent pertama yang benar-benar bekerja."},{"id":"3","label":"Aman","raw":"Fase 3 — Aman","milestone":""},{"id":"4","label":"Efisiensi (pembeda utama)","raw":"Fase 4 — Efisiensi (pembeda utama)","milestone":"M3: bukti angka penghematan di benchmark."},{"id":"5","label":"Ekstensi standar","raw":"Fase 5 — Ekstensi standar","milestone":""},{"id":"6","label":"System 1 (Laya/Jev)","raw":"Fase 6 — System 1 (Laya/Jev)","milestone":""},{"id":"7","label":"Self-evolve (jantung Nexus)","raw":"Fase 7 — Self-evolve (jantung Nexus)","milestone":"M4: agent memperbaiki dirinya dengan aman."},{"id":"8","label":"Kesadaran diri","raw":"Fase 8 — Kesadaran diri","milestone":""}],"tasks":[{"id":"0.1","size":"(S)","title":"Putuskan nama final; cek GitHub/npm/domain. Ganti scope `@nexus/*` bila perlu","criteria":"","status":"todo","phaseId":"0"},{"id":"0.2","size":"(S)","title":"Monorepo pnpm, TS strict, lint, vitest, CI.","criteria":"`pnpm check` hijau","status":"done","phaseId":"0"},{"id":"0.3","size":"(S)","title":"`AGENTS.md` + `docs/ARCHITECTURE.md` skeleton","criteria":"","status":"done","phaseId":"0"},{"id":"0.4","size":"(M)","title":"Benchmark awal: 20 tugas coding kecil + metrik (biaya, token, waktu, sukses).","criteria":"satu perintah menjalankan semuanya","status":"todo","phaseId":"0"},{"id":"1.1","size":"(M)","title":"Kontrak Plugin API final.","criteria":"`docs/PLUGIN_API.md` + tipe (draf sudah ada)","status":"todo","phaseId":"1"},{"id":"1.2","size":"(M)","title":"Loader/registry: urutan dependensi, hot swap, isolasi kegagalan.","criteria":"plugin dimuat/dibuang tanpa restart (baseline sudah ada)","status":"todo","phaseId":"1"},{"id":"1.3","size":"(S)","title":"Event bus dengan tipe event terdaftar (baseline sudah ada)","criteria":"","status":"todo","phaseId":"1"},{"id":"1.4","size":"(M)","title":"Config YAML + resolusi `plugins/` → `user/`.","criteria":"config user menimpa default tanpa mengubah file official","status":"todo","phaseId":"1"},{"id":"1.5","size":"(M)","title":"Sistem izin allow/ask/deny per tool.","criteria":"tool berbahaya meminta approval","status":"todo","phaseId":"1"},{"id":"2.1","size":"(M)","title":"Plugin `model-*` (satu provider dulu, interface generik)","criteria":"","status":"todo","phaseId":"2"},{"id":"2.2","size":"(M)","title":"Plugin `loop-react`.","criteria":"agent memanggil tool dalam loop","status":"todo","phaseId":"2"},{"id":"2.3","size":"(M)","title":"Tool `fs` dan `shell` (dengan izin).","criteria":"agent mengedit file di proyek uji","status":"todo","phaseId":"2"},{"id":"2.4","size":"(M)","title":"Sesi tersimpan (SQLite/JSONL), resume dan fork","criteria":"","status":"todo","phaseId":"2"},{"id":"2.5","size":"(S)","title":"UI CLI minimal","criteria":"","status":"todo","phaseId":"2"},{"id":"2.6","size":"(M)","title":"Jalankan benchmark.","criteria":"≥ 5 dari 20 tugas selesai end-to-end","status":"todo","phaseId":"2"},{"id":"3.1","size":"(L)","title":"Sandbox runner (container atau git worktree terisolasi)","criteria":"","status":"todo","phaseId":"3"},{"id":"3.2","size":"(M)","title":"Snapshot dan rollback berbasis git.","criteria":"satu perintah mengembalikan keadaan sebelum tugas","status":"todo","phaseId":"3"},{"id":"3.3","size":"(M)","title":"Budget guard (token, uang, waktu).","criteria":"agent berhenti saat batas tercapai","status":"todo","phaseId":"3"},{"id":"3.4","size":"(S)","title":"Trace log terstruktur","criteria":"","status":"todo","phaseId":"3"},{"id":"4.1","size":"(M)","title":"Prompt caching","criteria":"","status":"todo","phaseId":"4"},{"id":"4.2","size":"(M)","title":"Context compactor otomatis","criteria":"","status":"todo","phaseId":"4"},{"id":"4.3","size":"(M)","title":"Tool call paralel","criteria":"","status":"todo","phaseId":"4"},{"id":"4.4","size":"(M)","title":"Tool edit berbasis diff.","criteria":"token turun dibanding tulis ulang file","status":"todo","phaseId":"4"},{"id":"4.5","size":"(M)","title":"Router model murah/mahal","criteria":"","status":"todo","phaseId":"4"},{"id":"4.6","size":"(S)","title":"Dashboard CLI biaya dan token per tugas.","criteria":"ada baseline sebelum/sesudah","status":"todo","phaseId":"4"},{"id":"5.1","size":"(M)","title":"MCP client","criteria":"","status":"todo","phaseId":"5"},{"id":"5.2","size":"(S)","title":"Skills loader (SKILL.md)","criteria":"","status":"todo","phaseId":"5"},{"id":"5.3","size":"(S)","title":"Pembaca `AGENTS.md`","criteria":"","status":"todo","phaseId":"5"},{"id":"5.4","size":"(L)","title":"Memori v1: vault Markdown + `[[wikilink]]` + indeks SQLite","criteria":"","status":"todo","phaseId":"5"},{"id":"6.1","size":"(M)","title":"Interface plugin `judge`.","criteria":"bisa ganti Laya, Jev, atau fallback LLM","status":"todo","phaseId":"6"},{"id":"6.2","size":"(M)","title":"Integrasi Laya lokal (ONNX).","criteria":"berjalan di mesin dev","status":"todo","phaseId":"6"},{"id":"6.3","size":"(M)","title":"Uji akurasi di data sendiri (termasuk bahasa Indonesia) dan kalibrasi","criteria":"","status":"todo","phaseId":"6"},{"id":"6.4","size":"(M)","title":"Pakai untuk gate tool call dan pemilihan tool.","criteria":"LLM lebih jarang dipanggil, sukses tidak turun","status":"todo","phaseId":"6"},{"id":"7.1","size":"(L)","title":"Pipeline gate: worktree → lint/type → unit → eval → smoke sandbox → canary → swap → rollback","criteria":"","status":"todo","phaseId":"7"},{"id":"7.2","size":"(M)","title":"Tool `plugin.create`, `plugin.test`, `plugin.install`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.3","size":"(M)","title":"`agent-made/staging` dan `active`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.4","size":"(L)","title":"Hot reload plugin buatan agent.","criteria":"patch buruk otomatis ditolak","status":"todo","phaseId":"7"},{"id":"7.5","size":"(L)","title":"`patches.lock` + merge 3 arah + uji ulang patch user setelah update","criteria":"","status":"todo","phaseId":"7"},{"id":"7.6","size":"(L)","title":"Kristalisasi skill: pola berulang → script tanpa LLM.","criteria":"biaya tugas berulang turun","status":"todo","phaseId":"7"},{"id":"8.1","size":"(M)","title":"`self.inspect()` + `SELF.md` otomatis","criteria":"","status":"todo","phaseId":"8"},{"id":"8.2","size":"(M)","title":"Scheduler: goals, heartbeat, cron","criteria":"","status":"todo","phaseId":"8"},{"id":"8.3","size":"(M)","title":"Refleksi setelah tugas + catat tingkat sukses per jenis tugas","criteria":"","status":"todo","phaseId":"8"},{"id":"8.4","size":"(M)","title":"Skor keyakinan (dari judge) → bertanya atau eskalasi","criteria":"","status":"todo","phaseId":"8"},{"id":"8.5","size":"(L)","title":"Graph view live","criteria":"","status":"todo","phaseId":"8"}]}</script>
+  <script>
+    (() => {
+      'use strict';
+      const embedded = JSON.parse(document.getElementById('embedded-data').textContent);
+      const state = { data: structuredClone(embedded), status: 'all', phase: 'all', query: '' };
+      const $ = (id) => document.getElementById(id);
+      const els = {
+        total: $('totalStat'), done: $('doneStat'), active: $('activeStat'), progress: $('progressStat'),
+        progressValue: $('progressValue'), ring: $('progressRing'), phaseList: $('phaseList'), empty: $('emptyState'),
+        result: $('resultCount'), activeSummary: $('activeSummary'), search: $('searchInput'),
+        phase: $('phaseSelect'), file: $('fileInput'), toast: $('toast'), sourceState: $('sourceState'), footerSource: $('footerSource')
+      };
+      const labels = { done: 'Selesai', active: 'Sedang dikerjakan', todo: 'Belum' };
+      const classFor = { done: 'badge-done', active: 'badge-active', todo: 'badge-todo' };
+      let toastTimer;
+      function showToast(message) {
+        els.toast.textContent = message; els.toast.hidden = false;
+        clearTimeout(toastTimer); toastTimer = setTimeout(() => { els.toast.hidden = true; }, 4200);
+      }
+      function parseTasks(text) {
+        const phases = [], tasks = [];
+        const phaseRe = /^## (Fase \d+ — .+)$/;
+        const taskRe = /^- \[( |x|X|~|>)\] \*\*(.+?)\*\* (.+)$/;
+        let current = null;
+        for (const line of text.split(/\r?\n/)) {
+          const pm = line.match(phaseRe);
+          if (pm) {
+            current = pm[1];
+            const id = current.match(/^Fase\s+(\d+)/)?.[1] ?? current;
+            const label = current.replace(/^Fase \d+ — /, '').replace(/\s*\([🔒🤖][^)]*\)\s*$/u, '').trim();
+            phases.push({ id, label, raw: current, milestone: '' });
+            continue;
+          }
+          if (line.startsWith('🏁 **') && phases.length) { phases[phases.length - 1].milestone = line.replace('🏁 ', '').replaceAll('**', '').trim(); continue; }
+          const tm = line.match(taskRe);
+          if (!tm || !current) continue;
+          const idSize = tm[2].split(' ', 1);
+          const rest = tm[3];
+          const pieces = rest.split(' ✓ ');
+          const mark = tm[1].toLowerCase();
+          const status = mark === 'x' ? 'done' : (mark === '~' || mark === '>') ? 'active' : 'todo';
+          tasks.push({ id: idSize[0], size: idSize[1] || '', title: pieces[0].trim(), criteria: pieces[1]?.trim() || '', status, phaseId: current.match(/^Fase\s+(\d+)/)?.[1] ?? '' });
+        }
+        if (!tasks.length) throw new Error('Tidak ditemukan task berformat checklist.');
+        return { phases, tasks };
+      }
+      function updateSource(label) {
+        els.sourceState.textContent = label;
+        els.footerSource.textContent = label === 'live: TASKS.md' ? 'Sumber dimuat dari file TASKS.md melalui server lokal.' : 'Snapshot tertanam · gunakan “Muat ulang sumber” setelah TASKS.md berubah.';
+      }
+      function fillPhases() {
+        const current = els.phase.value;
+        els.phase.replaceChildren(new Option('Semua fase', 'all'));
+        for (const phase of state.data.phases) els.phase.add(new Option(`Fase ${phase.id} — ${phase.label}`, phase.id));
+        els.phase.value = state.data.phases.some(p => p.id === current) ? current : 'all';
+      }
+      function matches(task, phase) {
+        const q = state.query.trim().toLowerCase();
+        const searchable = `${task.id} ${task.title} ${task.criteria} ${phase?.label || ''}`.toLowerCase();
+        return (state.status === 'all' || task.status === state.status) && (state.phase === 'all' || task.phaseId === state.phase) && (!q || searchable.includes(q));
+      }
+      function renderSummary() {
+        const all = state.data.tasks;
+        const counts = { done: 0, active: 0, todo: 0 };
+        for (const task of all) counts[task.status]++;
+        const pct = all.length ? Math.round((counts.done / all.length) * 100) : 0;
+        els.total.textContent = all.length; els.done.textContent = counts.done; els.active.textContent = counts.active;
+        els.progress.textContent = `${pct}%`; els.progressValue.textContent = `${pct}%`; els.ring.style.setProperty('--pct', pct);
+        els.activeSummary.textContent = counts.active ? `${counts.active} task aktif` : 'belum ada';
+        els.activeSummary.style.color = counts.active ? 'var(--active)' : 'var(--muted)';
+      }
+      function taskNode(task, phase) {
+        const el = document.createElement('article');
+        el.className = `task ${task.status}`;
+        el.innerHTML = `<div class="task-id">${task.id}</div><div class="task-main"><div class="task-title"></div>${task.criteria ? '<div class="task-criteria"></div>' : ''}</div><div class="task-side"><span class="badge ${classFor[task.status]}">${labels[task.status]}</span><span class="size">${task.size}</span></div>`;
+        el.querySelector('.task-title').textContent = task.title;
+        if (task.criteria) el.querySelector('.task-criteria').textContent = task.criteria;
+        return el;
+      }
+      function render() {
+        renderSummary(); fillPhases();
+        els.phaseList.replaceChildren();
+        let visible = 0;
+        for (const phase of state.data.phases) {
+          const phaseTasks = state.data.tasks.filter(t => t.phaseId === phase.id && matches(t, phase));
+          if (!phaseTasks.length) continue;
+          visible += phaseTasks.length;
+          const section = document.createElement('section'); section.className = 'phase';
+          const done = phaseTasks.filter(t => t.status === 'done').length;
+          const pct = Math.round((done / phaseTasks.length) * 100);
+          const head = document.createElement('div'); head.className = 'phase-head';
+          head.innerHTML = `<div class="phase-title"><span class="phase-number">F${phase.id}</span><span class="phase-name"></span></div><div class="phase-meta">${phaseTasks.length} task · ${pct}% selesai</div>`;
+          head.querySelector('.phase-name').textContent = phase.label;
+          const bar = document.createElement('div'); bar.className = 'phase-bar'; bar.innerHTML = `<span style="width:${pct}%"></span>`;
+          const list = document.createElement('div'); list.className = 'task-list';
+          phaseTasks.forEach((task) => { list.append(taskNode(task, phase)); });
+          section.append(head, bar, list);
+          if (phase.milestone) { const note = document.createElement('div'); note.className = 'phase-meta'; note.style.marginTop = '8px'; note.textContent = `Milestone: ${phase.milestone}`; section.append(note); }
+          els.phaseList.append(section);
+        }
+        els.empty.hidden = visible !== 0;
+        els.result.innerHTML = visible === state.data.tasks.length ? `Menampilkan <strong>${visible}</strong> task` : `Menampilkan <strong>${visible}</strong> dari ${state.data.tasks.length} task`;
+      }
+      async function reloadSource() {
+        try {
+          const response = await fetch('TASKS.md', { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          state.data = parseTasks(await response.text());
+          updateSource('live: TASKS.md'); render(); showToast('TASKS.md berhasil dimuat.');
+        } catch (error) {
+          showToast('Live load gagal. Buka lewat local server atau gunakan Impor TASKS.md.');
+          console.warn(error);
+        }
+      }
+      $('importBtn').addEventListener('click', () => els.file.click());
+      $('reloadBtn').addEventListener('click', reloadSource);
+      els.file.addEventListener('change', async () => {
+        const file = els.file.files?.[0]; if (!file) return;
+        try { state.data = parseTasks(await file.text()); updateSource(`impor: ${file.name}`); render(); showToast(`${file.name} berhasil diimpor.`); }
+        catch (error) { showToast(error instanceof Error ? error.message : 'File TASKS.md tidak valid.'); }
+        els.file.value = '';
+      });
+      els.search.addEventListener('input', (event) => { state.query = event.target.value; render(); });
+      els.phase.addEventListener('change', (event) => { state.phase = event.target.value; render(); });
+      document.querySelectorAll('.status-tab').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.status = button.dataset.status;
+          document.querySelectorAll('.status-tab').forEach((item) => { item.setAttribute('aria-pressed', String(item === button)); });
+          render();
+        });
+      });
+      $('clearBtn').addEventListener('click', () => { state.status = 'all'; state.phase = 'all'; state.query = ''; els.search.value = ''; document.querySelectorAll('.status-tab').forEach((item) => { item.setAttribute('aria-pressed', String(item.dataset.status === 'all')); }); render(); });
+      render();
+    })();
+  </script>
+</body>
+</html>
