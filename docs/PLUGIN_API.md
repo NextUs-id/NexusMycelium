@@ -211,32 +211,44 @@ Task 3.4 sudah dicentang di `TASKS.md`: ditutup 2026-09-27 setelah full gate bag
 ### Aturan untuk task berikutnya
 
 Menambah nama baru ke `PluginEventMap`, memberi trace capability atau service `trace:*`, membiarkan config trace memilih path, membuat plugin berlangganan trace, atau menjadikan trace bagian dari record session adalah perubahan kontrak. Semuanya butuh migration guide, adapter/compatibility test, dan penulisan ulang batas di dokumen ini. Trace reader, retensi, dan dashboard biaya/token adalah **4.6** dan **7.1**–**7.4**, bukan bagian 3.4.
-## Prompt caching dan batasnya terhadap Plugin API (Task 4.1)
+## Prompt caching dan batasnya terhadap Plugin API (Task 4.1 / 4.1b)
 
 ### Yang masuk ke kontrak, dan sifatnya
 
-- Tidak ada. Kontrak `ModelUsage` di `kernel/src/model.ts` **tidak berubah** untuk 4.1: tetap tiga
-  penghitung plus `source`. `OpenAIUsage` di `plugins/model-openai` adalah tipe **milik plugin**,
-  `ModelUsage & { readonly cachedTokens?: number }`, dan `OpenAICompatibleResult` adalah
-  `ModelResult & { readonly usage?: OpenAIUsage }`. Plugin yang memakai `ModelResult` dari provider lain
-  tidak melihat field itu, dan plugin yang memakai `services.get("model:openai")` melihat
-  `ModelProvider` sehingga tipe `usage` yang kembali adalah `ModelUsage`.
+- **`ModelUsage.cachedTokens?: number`** — satu field opsional yang ditambahkan di 4.1b. Aditif:
+  plugin yang membaca `usage` dan mengabaikan field itu tidak perlu berubah, dan plugin yang menulis
+  `usage` tanpa field itu tetap valid. Tidak ada field yang dihapus atau berubah makna.
+- **`plugins["model-openai"].promptCacheKey`** — key opsional pada `ModelPluginConfigSchema` yang
+  `.strict()`. Config lama tanpa key tetap valid; config dengan key yang tidak lolos
+  `z.string().max(256).pipe(safeTextSchema)` ditolak saat resolve, bukan diabaikan. Blok `model:`
+  tidak berubah, jadi integrator yang menaruh konfigurasi model di level atas tidak ikut terpengaruh.
+- **Tipe plugin `OpenAIUsage` dan `OpenAICompatibleResult` dihapus.** Setelah `cachedTokens` masuk
+  kontrak kernel, keduanya hanya alias dari `ModelUsage` dan `ModelResult`; menyisakan dua nama
+  untuk satu bentuk yang sama hanya menambah kosakata. Plugin yang mengimpor `OpenAIUsage` harus
+  mengimpor `ModelUsage` dari `kernel/src/model.js`.
 
 ### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
 
-- **`cachedTokens` berhenti di plugin.** `parseUsage` di `plugins/loop-react` hanya menerima tiga
-  angka finite plus `source` dan membangun ulang `ModelUsage`, sehingga hitungan cache-read tidak
-  pernah mencapai `AgentResult.usage`, session v1, atau trace. Plugin yang butuh angka itu harus
-  membaca `OpenAIUsage` langsung dari `createOpenAICompatibleModel`, bukan dari runner.
-- **`prompt_cache_key` tidak dikirim.** Menambahkannya sebagai key config menyentuh
-  `ModelPluginConfigSchema` yang `.strict()` di `kernel/src/config.ts`, yaitu kontrak kernel.
+- **`prompt_cache_key` hanya dikirim kalau dikonfigurasi.** Tanpa key, body request tidak punya field
+  itu sama sekali. Plugin tidak pernah menebak key dari isi prompt, dari nama model, atau dari
+  timestamp.
+- **`cachedTokens` tidak punya harga.** `ModelPrice` tetap dua field, sehingga token cache-read
+  dihitung dengan tarif input penuh; run ber-budget bisa overestimate. Plugin tidak boleh menurunkan
+  `inputTokens` dengan `cachedTokens` — keduanya hitungan yang berbeda, bukan pengurangan.
+- **Tidak ada persistence.** `src/session.ts` tetap tidak menyimpan usage, jadi hit cache hanya
+  tersedia di `AgentResult.usage` selama proses hidup. Plugin yang butuh angka lintas proses harus
+  membacanya sendiri lewat trace atau store sendiri, bukan mengarangnya dari `AgentResult`.
+- **Belum ada bukti di gateway live.** Semua test memakai fetcher palsu dan nol request live ke
+  9Router.
 
 ### Aturan untuk task berikutnya
 
-- Kalau sebuah task berikutnya mengizinkan `kernel/`, slot cache-read harus datang sebagai migration
-  kontrak: versi schema, adapter, dan compatibility test — bukan field tambahan diam-diam. Aturan yang
-  sama sudah berlaku untuk `usage` di session v1 (lihat 2.4) dan untuk event `usage:*` yang memang
-  tidak pernah ada (lihat 3.3).
+- Menambah field ke `ModelUsage` lagi harus menyebut migration: field opsional, tanpa penghapusan,
+  dan tanpa menaikkan `schemaVersion` selama field itu belum masuk record session. Kalau suatu saat
+  usage masuk session, itu task tersendiri dengan adapter dan compatibility test.
+- Kalau 4.6 memakai `cachedTokens`, ia harus membacanya sebagai **cache read**, bukan sebagai
+  pengurangan `inputTokens`, dan harus menulis di `benchmarks/README.md` bahwa angkanya provenance
+  provider `mock` selama suite live masih ditunda.
 
 ## Test dan CI secret-free
 

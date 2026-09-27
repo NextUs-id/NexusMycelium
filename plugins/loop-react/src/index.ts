@@ -66,12 +66,20 @@ function tokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+/** A cache-read count is a whole number of tokens, or the whole usage block is dropped with it. */
+function cacheReadCount(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return tokenCount(value) && Number.isInteger(value) ? (value as number) : null;
+}
+
 /** Provider counts cross a trust boundary here: only three finite numbers and a short label survive. */
 function parseUsage(value: unknown): ModelUsage | undefined {
   if (!isRecord(value)) return undefined;
   if (!tokenCount(value.inputTokens) || !tokenCount(value.outputTokens) || !tokenCount(value.totalTokens)) {
     return undefined;
   }
+  const cachedTokens = cacheReadCount(value.cachedTokens);
+  if (cachedTokens === null) return undefined;
   if (typeof value.source !== "string" || value.source.length === 0) return undefined;
   const source = Array.from(value.source, (character) => {
     const code = character.charCodeAt(0);
@@ -86,6 +94,7 @@ function parseUsage(value: unknown): ModelUsage | undefined {
     outputTokens: value.outputTokens,
     totalTokens: value.totalTokens,
     source,
+    ...(cachedTokens === undefined ? {} : { cachedTokens }),
   };
 }
 
@@ -218,6 +227,9 @@ export function createAgentRunner(options: {
       let outputTokens = 0;
       let totalTokens = 0;
       let usageSource: string | undefined;
+      // Cache reads are summed per turn and stay inside `inputTokens`, so they never charge twice.
+      let cachedTokens = 0;
+      let cacheReadsReported = false;
       /** Exact-key lookup: a prototype member like `constructor` is never a price. */
       const price = (): ModelPrice | undefined => {
         const identity = options.modelIdentity;
@@ -227,7 +239,13 @@ export function createAgentRunner(options: {
       const aggregate = (): ModelUsage | undefined =>
         usageSource === undefined
           ? undefined
-          : { inputTokens, outputTokens, totalTokens, source: usageSource };
+          : {
+              inputTokens,
+              outputTokens,
+              totalTokens,
+              source: usageSource,
+              ...(cacheReadsReported ? { cachedTokens } : {}),
+            };
       /**
        * Charges one model turn and reports the first breached cap, or `undefined` to keep going.
        * Unpriced cost and unreadable usage are checked before the turn is charged, so an
@@ -245,6 +263,10 @@ export function createAgentRunner(options: {
         totalTokens += reported.totalTokens;
         if (usageSource === undefined) usageSource = reported.source;
         else if (usageSource !== reported.source) usageSource = "multiple";
+        if (reported.cachedTokens !== undefined) {
+          cachedTokens += reported.cachedTokens;
+          cacheReadsReported = true;
+        }
         if (budget.maxTotalTokens !== null && totalTokens >= budget.maxTotalTokens) return BUDGET_TOKENS;
         // Both sides are integer micro-USD, so no float division can round a cap up to a pass.
         if (costCap !== null && rate !== undefined) {

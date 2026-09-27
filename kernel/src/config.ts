@@ -260,6 +260,7 @@ const ModelPluginConfigSchema = z
     apiKeyEnv: z.literal("OPENAI_API_KEY").optional(),
     apiKeyFile: modelSecretPathSchema.optional(),
     allowedModelPrefixes: modelPrefixSchema.optional(),
+    promptCacheKey: z.string().max(256).pipe(safeTextSchema).optional(),
   })
   .strict();
 const LoopPluginConfigSchema = AgentOverlaySchema;

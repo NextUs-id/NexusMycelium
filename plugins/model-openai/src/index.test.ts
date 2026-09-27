@@ -534,6 +534,40 @@ describe("model-openai", () => {
     expect(called.usage).not.toHaveProperty("cachedTokens");
   });
 
+  it("sends a configured prompt cache key and omits the field without one", async () => {
+    const bodies: string[] = [];
+    const fetcher: typeof fetch = async (_input, init) => {
+      bodies.push(String(init?.body));
+      return new Response(JSON.stringify(finalBody()), { status: 200 });
+    };
+    const cached = createOpenAICompatibleModel({
+      ...modelOptions,
+      apiKey: "test-key",
+      promptCacheKey: "nexus-run-1",
+      fetcher,
+    });
+    await cached.complete([{ role: "user", content: "hello" }], []);
+    expect(JSON.parse(bodies[0] ?? "{}")).toMatchObject({ prompt_cache_key: "nexus-run-1" });
+
+    const plain = createOpenAICompatibleModel({ ...modelOptions, apiKey: "test-key", fetcher });
+    await plain.complete([{ role: "user", content: "hello" }], []);
+    // An unconfigured run must not send the field at all: a gateway that rejects unknown fields stays working.
+    expect(JSON.parse(bodies[1] ?? "{}")).not.toHaveProperty("prompt_cache_key");
+  });
+
+  it("refuses a prompt cache key that is empty, padded, control-bearing, or oversized", () => {
+    for (const promptCacheKey of ["", " key", "key ", "ke\ny", "k".repeat(257)]) {
+      expect(() =>
+        createOpenAICompatibleModel({
+          ...modelOptions,
+          apiKey: "test-key",
+          promptCacheKey,
+          fetcher: async () => new Response(JSON.stringify(finalBody()), { status: 200 }),
+        }),
+      ).toThrow(/promptCacheKey/);
+    }
+  });
+
   it("leaves usage undefined when the gateway omits, nulls, empties, or zeroes it", async () => {
     for (const usage of [
       undefined,

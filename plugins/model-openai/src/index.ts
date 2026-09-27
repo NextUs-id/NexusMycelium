@@ -54,12 +54,6 @@ const OpenAIResponseSchema = z.object({
   usage: OpenAIUsageSchema,
 });
 
-/** Kernel accounting plus the cache-read count the kernel has no slot for (4.1). */
-export type OpenAIUsage = ModelUsage & { readonly cachedTokens?: number };
-
-/** `ModelResult` plus the usage the gateway actually reported. Never fabricated. */
-export type OpenAICompatibleResult = ModelResult & { readonly usage?: OpenAIUsage };
-
 type OpenAICompatibleOptions = {
   baseUrl: string;
   model: string;
@@ -70,6 +64,11 @@ type OpenAICompatibleOptions = {
   apiKey?: string;
   apiKeyFile?: string;
   allowedModelPrefixes?: readonly string[];
+  /**
+   * Opt-in `prompt_cache_key` for gateways that route a stable prefix to one cache entry. It is
+   * never sent unconfigured: an always-on field would break a gateway that rejects unknown members.
+   */
+  promptCacheKey?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,6 +201,22 @@ function validateModelPrefixes(prefixes: readonly string[] | undefined): readonl
   return [...prefixes];
 }
 
+function validatePromptCacheKey(value: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 256 ||
+    value.trim() !== value ||
+    value.includes("\0") ||
+    hasControlCharacter(value)
+  ) {
+    throw new Error(
+      "OpenAI promptCacheKey must be 1-256 characters without NUL, control characters, or surrounding whitespace",
+    );
+  }
+  return value;
+}
+
 export function isModelAllowed(model: string, allowedModelPrefixes?: readonly string[]): boolean {
   return (
     allowedModelPrefixes === undefined || allowedModelPrefixes.some((prefix) => model.startsWith(prefix))
@@ -229,7 +244,7 @@ function openAIMessages(messages: readonly ModelMessage[]): Record<string, unkno
  * `undefined`: the kernel contract needs all three, and deriving or zero-filling
  * one would invent spend the budget guard then trusts. No price is computed here.
  */
-function parseUsage(usage: z.infer<typeof OpenAIUsageSchema>): OpenAIUsage | undefined {
+function parseUsage(usage: z.infer<typeof OpenAIUsageSchema>): ModelUsage | undefined {
   if (usage === null || usage === undefined) return undefined;
   const { prompt_tokens: input, completion_tokens: output, total_tokens: total } = usage;
   if (input === undefined || output === undefined || total === undefined) return undefined;
@@ -244,11 +259,11 @@ function parseUsage(usage: z.infer<typeof OpenAIUsageSchema>): OpenAIUsage | und
   };
 }
 
-function usageField(usage: OpenAIUsage | undefined): { usage?: OpenAIUsage } {
+function usageField(usage: ModelUsage | undefined): { usage?: ModelUsage } {
   return usage === undefined ? {} : { usage };
 }
 
-function parseResponse(body: unknown): OpenAICompatibleResult {
+function parseResponse(body: unknown): ModelResult {
   const parsed = OpenAIResponseSchema.safeParse(body);
   if (!parsed.success) {
     throw new Error(`OpenAI-compatible response is invalid: ${parsed.error.message}`);
@@ -288,6 +303,10 @@ export function createOpenAICompatibleModel(options: OpenAICompatibleOptions): M
   if (!isModelAllowed(options.model, allowedModelPrefixes)) {
     throw new Error("model is not allowed by the configured prefix allowlist");
   }
+  // Same trust boundary as every other string that leaves the process: a key that cannot reach the
+  // gateway verbatim is refused here, not sanitised into something that silently works.
+  const promptCacheKey =
+    options.promptCacheKey === undefined ? undefined : validatePromptCacheKey(options.promptCacheKey);
   const requestUrl = endpoint(options.baseUrl);
   const fetcher = options.fetcher ?? globalThis.fetch;
   if (typeof fetcher !== "function") throw new Error("global fetch is unavailable");
@@ -302,7 +321,7 @@ export function createOpenAICompatibleModel(options: OpenAICompatibleOptions): M
     options.apiKeyFile === undefined ? undefined : secretFile(options.apiKeyFile, [homeUserRoot()]).file;
   let apiKeyPromise: Promise<string> | undefined;
   return {
-    async complete(messages, tools, signal): Promise<OpenAICompatibleResult> {
+    async complete(messages, tools, signal): Promise<ModelResult> {
       await options.permissions.check("network", `POST ${requestUrl}`);
       if (signal?.aborted) throw new Error("OpenAI-compatible request cancelled");
       const controller = new AbortController();
@@ -342,6 +361,7 @@ export function createOpenAICompatibleModel(options: OpenAICompatibleOptions): M
               },
             })),
             stream: false,
+            ...(promptCacheKey === undefined ? {} : { prompt_cache_key: promptCacheKey }),
           }),
           signal: controller.signal,
         });
@@ -510,6 +530,7 @@ export default definePlugin({
       apiKeyEnv: configString(config, "apiKeyEnv", "OPENAI_API_KEY"),
       apiKey,
       allowedModelPrefixes: configPrefixes(config),
+      promptCacheKey: optionalConfigString(config, "promptCacheKey"),
       permissions,
     });
     services.register("model:openai", model, "model-openai");

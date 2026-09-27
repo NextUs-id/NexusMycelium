@@ -26,6 +26,12 @@ export interface ModelUsage {
   totalTokens: number;
   /** Provenance of the counts, e.g. the provider's own report. Free-form on purpose. */
   source: string;
+  /**
+   * Input tokens the provider served from its own prompt cache. Optional and additive: a report
+   * without a cache-read count stays a valid `ModelUsage`, and a count is never derived or zero-filled
+   * here. It is already part of `inputTokens`, so it is a reading aid and never a second charge.
+   */
+  cachedTokens?: number;
 }
 
 /** USD per million tokens. The caller supplies prices; the kernel never guesses them. */

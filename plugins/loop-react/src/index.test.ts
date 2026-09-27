@@ -8,7 +8,13 @@ import {
   Registry,
   resolveBudgetPolicy,
 } from "../../../kernel/src/index.js";
-import type { ModelMessage, ModelProvider, ModelResult, ModelUsage } from "../../../kernel/src/model.js";
+import type {
+  ModelMessage,
+  ModelProvider,
+  ModelResult,
+  ModelToolDefinition,
+  ModelUsage,
+} from "../../../kernel/src/model.js";
 import { ToolRegistry } from "../../../kernel/src/tools.js";
 import { createRuntime } from "../../../src/runtime.js";
 import { createSessionStore } from "../../../src/session.js";
@@ -43,14 +49,18 @@ function sequence(results: readonly ModelResult[]): ModelProvider {
 function recorder(results: readonly ModelResult[]): {
   model: ModelProvider;
   seen: ModelMessage[][];
+  seenTools: ModelToolDefinition[][];
 } {
   const seen: ModelMessage[][] = [];
+  const seenTools: ModelToolDefinition[][] = [];
   let index = 0;
   return {
     seen,
+    seenTools,
     model: {
-      async complete(messages) {
+      async complete(messages, tools) {
         seen.push(messages.slice());
+        seenTools.push(tools.map((tool) => ({ ...tool })));
         const result = results[Math.min(index, results.length - 1)];
         index += 1;
         if (!result) throw new Error("test model has no result");
@@ -346,6 +356,103 @@ describe("loop-react resume hooks", () => {
     expect(snapshots[2]?.messages.some((message) => message.content === "injected")).toBe(false);
     expect(seen[1]).toHaveLength(4);
     expect(seen[2]).toHaveLength(6);
+  });
+
+  it("sums the cache reads a provider reports and drops the block when one is not a count", async () => {
+    const cached = (value: unknown): ModelUsage => ({
+      inputTokens: 1200,
+      outputTokens: 80,
+      totalTokens: 1280,
+      source: "model-openai",
+      ...(value === undefined ? {} : { cachedTokens: value as number }),
+    });
+    const { model } = recorder([
+      {
+        type: "tool_calls",
+        calls: [{ id: "call-1", name: "echo", arguments: { value: 1 } }],
+        usage: cached(1024),
+      },
+      { type: "final", text: "done", usage: cached(64) },
+    ]);
+    const metered = await createAgentRunner({
+      model,
+      tools: echoTools(),
+      limits,
+      budget: resolveBudgetPolicy({ enabled: true, maxTotalTokens: 100_000 }),
+    }).run("cache reads");
+    expect(metered.usage).toEqual({
+      inputTokens: 2400,
+      outputTokens: 160,
+      totalTokens: 2560,
+      source: "model-openai",
+      cachedTokens: 1088,
+    });
+
+    for (const bad of [-1, 1.5, Number.NaN, "1024", null]) {
+      const broken = createAgentRunner({
+        model: sequence([{ type: "final", text: "done", usage: cached(bad) }]),
+        tools: echoTools(),
+        limits,
+        budget: resolveBudgetPolicy({ enabled: true, maxTotalTokens: 100_000 }),
+      });
+      // A malformed cache-read count fails closed with the whole usage block, never as a partial one.
+      const result = await broken.run("bad cache reads");
+      expect(result).toMatchObject({ status: "stopped", error: BUDGET_USAGE_UNAVAILABLE });
+      expect(result.usage).toBeUndefined();
+    }
+  });
+
+  it("keeps the cacheable prefix byte-identical on every turn of a run", async () => {
+    const { model, seen } = recorder([
+      { type: "tool_calls", calls: [{ id: "call-1", name: "echo", arguments: { value: 1 } }] },
+      { type: "tool_calls", calls: [{ id: "call-2", name: "echo", arguments: { value: 2 } }] },
+      { type: "final", text: "done" },
+    ]);
+    const result = await createAgentRunner({ model, tools: echoTools(), limits }).run("cacheable task");
+    expect(result).toMatchObject({ status: "completed", steps: 3, toolCalls: 2 });
+    expect(seen).toHaveLength(3);
+    // Provider-side caching only pays off while the head of the transcript stays byte-identical.
+    expect(seen[0]?.slice(0, 2).map((message) => JSON.stringify(message))).toEqual([
+      JSON.stringify({
+        role: "system",
+        content: "Use the available tools when needed, then return a final answer.",
+      }),
+      JSON.stringify({ role: "user", content: "cacheable task" }),
+    ]);
+    for (const turn of seen) {
+      expect(turn.slice(0, 2)).toEqual(seen[0]?.slice(0, 2));
+      // A system message after the first user turn would restart the provider cache prefix.
+      expect(turn.slice(2).some((message) => message.role === "system")).toBe(false);
+    }
+    // Every turn only appends, so the previous turn survives verbatim as the head of the next.
+    expect(seen[1]?.slice(0, seen[0]?.length ?? 0)).toEqual(seen[0]);
+    expect(seen[2]?.slice(0, seen[1]?.length ?? 0)).toEqual(seen[1]);
+  });
+
+  it("sends the same tool definitions in the same order on every turn", async () => {
+    const { model, seenTools } = recorder([
+      { type: "tool_calls", calls: [{ id: "call-1", name: "echo", arguments: { value: 1 } }] },
+      { type: "final", text: "done" },
+    ]);
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "echo",
+      description: "echo",
+      inputSchema: { type: "object" },
+      execute: async () => "two",
+    });
+    tools.register({
+      name: "second",
+      description: "second",
+      inputSchema: { type: "object" },
+      execute: async () => "two",
+    });
+    const result = await createAgentRunner({ model, tools, limits }).run("stable tools");
+    expect(result).toMatchObject({ status: "completed", steps: 2, toolCalls: 1 });
+    expect(seenTools).toHaveLength(2);
+    // The tool block is part of the cached prefix, so its order must not drift between turns.
+    expect(seenTools[0]?.map((tool) => tool.name)).toEqual(["echo", "second"]);
+    for (const turn of seenTools) expect(turn).toEqual(seenTools[0]);
   });
 
   it("awaits an async step hook and keeps its snapshot after it resolves", async () => {

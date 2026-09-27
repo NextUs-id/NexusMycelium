@@ -751,3 +751,24 @@ describe("kernel config trace", () => {
     }
   });
 });
+
+describe("model prompt cache key", () => {
+  it("carries an optional prompt cache key into the model plugin config", () => {
+    const resolved = (value: unknown) => ({
+      ...ConfigSchema.parse(value),
+      runtimeUserRoot: "/tmp/nexus-runtime",
+    });
+    const config = resolved({ plugins: { "model-openai": { promptCacheKey: "nexus-run-1" } } });
+    expect(pluginConfig(config, "model-openai").promptCacheKey).toBe("nexus-run-1");
+    // Absent stays absent: an unconfigured run must not invent a key.
+    expect(pluginConfig(resolved({}), "model-openai")).not.toHaveProperty("promptCacheKey");
+  });
+
+  it("refuses a prompt cache key that is empty, padded, control-bearing, or oversized", () => {
+    for (const promptCacheKey of ["", " key", "key ", "ke\ny", "k".repeat(257)]) {
+      expect(() => ConfigSchema.parse({ plugins: { "model-openai": { promptCacheKey } } })).toThrow(
+        /promptCacheKey/,
+      );
+    }
+  });
+});

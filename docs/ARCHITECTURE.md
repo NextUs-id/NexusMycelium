@@ -459,7 +459,9 @@ Tidak ada flag CLI trace, tidak ada event plugin baru, tidak ada capability atau
 
 ## Status Task 4.1 — Prompt caching
 
-**Status 2026-09-27: BELUM ditutup.** Kotak `4.1` di `TASKS.md` tidak punya ✓ kriteria, jadi kriteria
+**Status 2026-09-27: ditutup** (lihat juga "Status Task 4.1b", yang menutup dua butir yang tadinya
+tertahan di kernel). Kotak 4.1 tidak punya ✓ kriteria; kriteria ditulis ulang di `TASKS.md` sebagai
+spesifikasi, dan tiga di antaranya sudah terpenuhi sebelum task ini dimulai. Kotak `4.1` di `TASKS.md` tidak punya ✓ kriteria, jadi kriteria
 ditulis ulang di sana sebagai spesifikasi, dan dua di antaranya masih `belum` karena butuh perubahan
 kontrak `kernel/`. Halaman ini menulis bentuk yang sudah ada di source dan batas yang belum ada —
 bukan daftar rencana.
@@ -478,15 +480,11 @@ bukan daftar rencana.
 
 ### Yang TIDAK ada di 4.1
 
-- **`prompt_cache_key` tidak pernah dikirim.** Config plugin `model-openai` divalidasi
-  `ModelPluginConfigSchema` yang `.strict()` di `kernel/src/config.ts`, jadi menambahkan key config
-  adalah perubahan kontrak kernel, dan `kernel/` hanya boleh berubah kalau task menyebutkannya.
-  Mengirim field itu always-on juga ditolak: gateway OpenAI-compatible yang menolak field asing akan
-  rusak tanpa ada cara opt-in.
-- **`cachedTokens` tidak pernah melewati batas loop.** `parseUsage` di `plugins/loop-react` membangun
-  ulang `ModelUsage` dari tiga penghitung plus `source`, jadi `cachedTokens` dibuang di sana, dan
-  `AgentResult.usage` (`kernel/src/model.ts`) tidak punya slot cache-read. Konsekuensinya: 4.6 tidak
-  punya sumber angka hit cache, dan session v1 tetap tidak memuat usage.
+- **`prompt_cache_key` sudah dikirim, opt-in** — ditutup 4.1b lewat `plugins["model-openai"].promptCacheKey`.
+  Tanpa key, field itu tidak dikirim sama sekali, jadi gateway yang menolak field asing tidak rusak.
+- **`cachedTokens` sudah melewati batas loop** — ditutup 4.1b: `ModelUsage` punya slot opsional dan
+  `plugins/loop-react` menjumlahkannya per giliran. Nilainya **masih hilang saat proses selesai**,
+  karena session v1 tetap tidak menyimpan usage (keputusan 2.4 tidak berubah oleh task ini).
 - **Tingkat hit cache di gateway live tidak pernah diukur.** Semua test offline dengan fetcher palsu.
   Tidak ada request live ke 9Router, tidak ada API key, tidak ada tagihan.
 
@@ -499,10 +497,54 @@ bukan daftar rencana.
 3. `terpenuhi` — "returns the reported token counters and cache reads on final and tool-call results"
    plus "leaves usage undefined when the gateway omits, nulls, empties, or zeroes it"
    (`plugins/model-openai/src/index.test.ts`).
-4. `belum` — field request `prompt_cache_key` yang bisa di-config; nama test yang mewajibkan ini
-   belum ada di repo. Butuh task yang mengizinkan `kernel/`.
-5. `belum` — `cachedTokens` yang bertahan sampai `AgentResult.usage`; nama test yang mewajibkan ini
-   belum ada di repo. Butuh slot kontrak plus migration note.
+4. `terpenuhi (4.1b)` — "sends a configured prompt cache key and omits the field without one"
+   (`plugins/model-openai/src/index.test.ts`) dan "carries an optional prompt cache key into the model
+   plugin config" (`kernel/src/config.test.ts`).
+5. `terpenuhi (4.1b)` — "sums the cache reads a provider reports and drops the block when one is not a
+   count" (`plugins/loop-react/src/index.test.ts`): 1024 + 64 menjadi 1088, dan hitungan yang bukan
+   bilangan bulat membuat seluruh blok `usage` hilang (fail closed), bukan separuh.
+
+## Status Task 4.1b — Prompt caching di kontrak
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 83 files`, `tsc --noEmit` bersih, 460 test di 32 file + 2 `node --test`), `build` exit 0,
+`bench:smoke` `{"ok":true,…}`, `bench:20` 20/20 dengan `taskSetHash 645a15f7…` dan
+`reproducibilityHash 8135d0ff…` (identik dengan 2.6/3.3/3.4 karena report provider `mock`-nya sama),
+`bench:accept` `accepted` dengan `violations: []`, dan `git diff --check` tanpa output.
+
+### Bentuk yang sudah ada di source
+
+- **`ModelUsage.cachedTokens?: number`** (`kernel/src/model.ts`). Opsional dan aditif: tidak ada field
+  yang dihapus, tidak ada yang berubah makna, dan `schemaVersion` session tidak naik karena
+  `ModelUsage` bukan bagian record session v1.
+- **`plugins["model-openai"].promptCacheKey`** (`kernel/src/config.ts`, `ModelPluginConfigSchema`
+  `.strict()`, `z.string().max(256).pipe(safeTextSchema)`). Hanya di level plugin; blok `model:`
+  tidak berubah. `plugins/model-openai/src/index.ts` memvalidasinya lagi di trust boundary kedua lalu
+  mengirim `prompt_cache_key` **hanya** kalau ada.
+- **Penjumlahan per giliran** di `plugins/loop-react/src/index.ts`: `cacheReadCount()` menerima hanya
+  bilangan bulat non-negatif, jumlah masuk ke `aggregate()`, dan `cachedTokens` **tidak pernah
+  Charge dua kali** karena sudah tercakup `inputTokens`.
+
+### Yang TIDAK ada di 4.1b
+
+- **Tidak ada harga untuk token cache-read.** `ModelPrice` tetap dua field, jadi biaya dihitung dengan
+  tarif input penuh: run ber-budget bisa overestimate. Kernel tidak menebak harga.
+- **Tidak ada persistence.** `src/session.ts` tetap menyimpan `run-start`/`run-step`/`run-end` tanpa
+  usage; hit cache hanya hidup di memori proses.
+- **Tidak ada bukti pada gateway live.** Semua test memakai fetcher palsu; `prompt_cache_key` belum
+  pernah dikirim ke router sungguhan, jadi perilaku gateway terhadap key itu belum diketahui.
+- **Tidak ada event `usage:*`, tidak ada service baru, tidak ada perubahan kernel lain.**
+
+### Kriteria falsifiable 4.1b
+
+1. "carries an optional prompt cache key into the model plugin config" (`kernel/src/config.test.ts`).
+2. "sends a configured prompt cache key and omits the field without one" dan "refuses a prompt cache
+   key that is empty, padded, control-bearing, or oversized" (`plugins/model-openai/src/index.test.ts`).
+3. "refuses a prompt cache key that is empty, padded, control-bearing, or oversized"
+   (`kernel/src/config.test.ts`) — dua lapisan validasi, bukan satu.
+4. "sums the cache reads a provider reports and drops the block when one is not a count"
+   (`plugins/loop-react/src/index.test.ts`) — sisi negatifnya ada di test yang sama: `-1`, `1.5`,
+   `NaN`, `"1024"`, dan `null` menghasilkan run `budget:usage-unavailable` tanpa `usage`.
 
 ## Permission dan trust
 
