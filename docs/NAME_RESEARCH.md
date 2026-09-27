@@ -2,14 +2,12 @@
 
 Checked: 2026-09-24 UTC
 
-## Recommendation
+## Final decision
 
-Use **NexusMycelium** as project name. Use **Agent** as descriptor where needed: `NexusMycelium Agent`.
-
-Recommended identifiers (not applied yet):
-
-- Product: `NexusMycelium`
-- CLI: `nexusmycelium`
+- Product/display name: `NexusMycelium`
+- Package root: `nexusmycelium`
+- Package scope: `@nexusmycelium/*`
+- CLI executable/command: `nexus`
 - GitHub repository: `NexusMycelium`
 - Primary domain candidate: `nexusmycelium.com`
 - Secondary domains: `nexusmycelium.dev`, `nexusmycelium.ai`, `nexusmycelium.io`
@@ -36,6 +34,4 @@ Recommended identifiers (not applied yet):
 
 ## Decision boundary
 
-This is a collision screen, not trademark clearance. Registrar availability can change. No name, package, scope, repository URL, or domain was changed by this task.
-
-Recommended next action: confirm **NexusMycelium** as final product name, then apply a separate rename task with global search and a test/check gate.
+This is a collision screen, not trademark clearance. Registrar availability can change. The final naming decision above is applied to package metadata, imports, documentation, and the lockfile; physical directories remain unchanged.

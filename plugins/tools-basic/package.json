@@ -1,0 +1,13 @@
+{
+  "name": "@nexusmycelium/plugin-tools-basic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "Canonical root-confined file and explicit-argument shell tools.",
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

@@ -1,7 +1,7 @@
-import { definePlugin } from "@nexus/kernel";
+import { definePlugin, type Plugin } from "../../../kernel/src/index.js";
 
 /** Minimal plugin: copy this folder to start a new one. */
-export default definePlugin({
+const plugin: Plugin = definePlugin({
   manifest: {
     name: "example-hello",
     version: "0.1.0",
@@ -15,3 +15,5 @@ export default definePlugin({
     return () => log.info("bye");
   },
 });
+
+export default plugin;

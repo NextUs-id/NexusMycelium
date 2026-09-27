@@ -1,25 +1,41 @@
 {
-  "name": "nexus-agent",
+  "name": "nexusmycelium",
   "private": true,
-  "version": "0.0.0",
-  "description": "Nexus agent: everything is a plugin, gated self-evolution, efficiency first.",
+  "version": "0.1.0",
+  "description": "Private source-workspace runtime for bounded local plugin tasks.",
   "type": "module",
   "packageManager": "pnpm@12.6.0",
+  "bin": {
+    "nexus": "./dist/src/cli.js"
+  },
   "engines": {
-    "node": ">=20"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
-    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/src/cli.js",
+    "run": "node dist/src/cli.js run",
+    "serve": "node dist/src/cli.js serve",
+    "cli": "node dist/src/cli.js",
+    "bench:20": "tsc -p tsconfig.build.json && node dist/benchmarks/run.js",
+    "bench:accept": "tsc -p tsconfig.build.json && node dist/benchmarks/accept.js",
+    "bench:smoke": "tsc -p tsconfig.build.json && node dist/benchmarks/smoke.js",
+    "test": "vitest run && node --test scripts/dashboard-server.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "biome check . && tsc --noEmit -p tsconfig.json && vitest run"
+    "check": "biome check . && tsc --noEmit -p tsconfig.json && corepack pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@types/node": "^26.6.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "nexusmycelium": "link:."
+  },
+  "dependencies": {
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
   }
 }

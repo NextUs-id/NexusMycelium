@@ -1,13 +1,14 @@
 {
-  "name": "@nexus/kernel",
-  "version": "0.0.0",
+  "name": "@nexusmycelium/kernel",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Locked micro-kernel: plugin loader, registry, event bus, permissions, gate.",
+  "description": "Locked micro-kernel: manifest, plugin lifecycle, config, events, and permissions.",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "yaml": "^2.9.1",
     "zod": "^4.6.5"
   }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "@nexusmycelium/plugin-tools-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "Legacy compatibility package for tools-basic; do not use for new plugins.",
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

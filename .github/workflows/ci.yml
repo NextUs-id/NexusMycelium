@@ -18,3 +18,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm bench:smoke
+      - run: pnpm bench:20
+      # Task 2.6 acceptance gate: same canonical 20 mock tasks, mock provider only, no secrets.
+      - run: pnpm bench:accept

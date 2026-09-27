@@ -12,3 +12,5 @@ data/*
 
 # per-install user config
 user/config.yaml
+user/secrets/
+user/providers/

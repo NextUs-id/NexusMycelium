@@ -1,4 +1,58 @@
-# Salin ke user/config.yaml (di-gitignore). File ini tidak pernah ditimpa oleh update.
+# Salin ke user/config.yaml (di-gitignore). File ini hanya data overlay dan tidak pernah ditimpa oleh update.
+# Nilai di bawah adalah default; fs.write, shell, dan network tetap deny sampai diaktifkan secara eksplisit.
+# tools.root relatif terhadap --root atau root runtime; null, tipe salah, key unknown, dan prototype pollution ditolak.
+# Config tidak dapat memuat kode plugin. Hanya nama plugin official dengan schema yang dikenal yang diterima.
+model:
+  provider: mock
+  model: mock
+  baseUrl: https://api.openai.com/v1
+  timeoutMs: 5000
+  # apiKeyFile: user/secrets/provider.key
+  # allowedModelPrefixes:
+  #   - vendor/
+agent:
+  maxSteps: 8
+  maxToolCalls: 12
+  timeoutMs: 15000
+# Budget guard: default nonaktif. null = tanpa batas untuk dimensi itu, bukan 0 dan bukan Infinity.
+# Nilai 0, negatif, NaN, harga negatif, dan key unknown ditolak; overlay user menggantikan nilai default per key.
+# prices adalah peta per model, dikunci nama model persis seperti yang dipanggil runtime (model.model).
+# Satu sisi harga yang hilang atau 0 ditolak: dimensi itu akan dianggap gratis padahal tidak.
+# Cap biaya pada model yang tidak ada di prices menghentikan run sebagai budget:cost-unpriced.
+budget:
+  enabled: false
+  # maxTotalTokens: 200000
+  # maxCostUsd: 0.5
+  # maxElapsedMs: 60000
+  # prices:
+  #   gpt-4o-mini:
+  #     inputUsdPerMillionTokens: 0.15
+  #     outputUsdPerMillionTokens: 0.6
+  #   oc/space-bunny-free:
+  #     inputUsdPerMillionTokens: 1
+  #     outputUsdPerMillionTokens: 2
+# Trace log terstruktur: default nonaktif dan blok yang hilang berarti mati, tidak ada file yang ditulis.
+# Tidak ada key path/dir/root/file/apiKeyFile; key unknown ditolak. Lokasi trace adalah urusan penulis trace.
+# maxBytes harus bilangan bulat positif (batas atas 67108864); 0, negatif, pecahan, dan NaN ditolak.
+# Overlay user menimpa nilai default per key: maxBytes lebih kecil berarti trace lebih cepat penuh dan tidak menulis apa pun.
+trace:
+  enabled: false
+  # maxBytes: 262144
+tools:
+  root: .
+  shell:
+    allow: []
+    deny: []
+    timeoutMs: 5000
+permissions:
+  fs.read: allow
+  fs.write: deny
+  shell: deny
+  network: deny
+dashboard:
+  host: 127.0.0.1
+  port: 18765
+  tasksFile: TASKS.md
 plugins:
   example-hello:
     who: "nexus"

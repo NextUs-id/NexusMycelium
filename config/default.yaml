@@ -1,0 +1,35 @@
+model:
+  provider: mock
+  model: mock
+  baseUrl: https://api.openai.com/v1
+  timeoutMs: 5000
+agent:
+  maxSteps: 8
+  maxToolCalls: 12
+  timeoutMs: 15000
+budget:
+  enabled: false
+  maxTotalTokens: null
+  maxCostUsd: null
+  maxElapsedMs: null
+trace:
+  enabled: false
+  maxBytes: 1048576
+tools:
+  root: .
+  shell:
+    allow: []
+    deny: []
+    timeoutMs: 5000
+permissions:
+  fs.read: allow
+  fs.write: deny
+  shell: deny
+  network: deny
+dashboard:
+  host: 127.0.0.1
+  port: 18765
+  tasksFile: TASKS.md
+plugins:
+  example-hello:
+    who: nexus

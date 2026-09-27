@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Dashboard status task Nexus Agent dari TASKS.md.">
-  <title>Nexus Agent — Task Dashboard</title>
+  <meta name="description" content="Dashboard status task NexusMycelium dari TASKS.md.">
+  <title>NexusMycelium — Task Dashboard</title>
   <style>
     :root {
       --bg: #101820;
@@ -246,7 +246,7 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">NX</div>
         <div class="brand-copy">
-          <div class="brand-title">Nexus execution map</div>
+          <div class="brand-title">NexusMycelium execution map</div>
           <div class="brand-sub" id="sourcePath">nexus-scaffold / TASKS.md</div>
         </div>
       </div>
@@ -262,12 +262,12 @@
         <div>
           <div class="kicker">Scaffold status / source of truth</div>
           <h1 id="pageTitle">Semua task, satu peta.</h1>
-          <p class="lede">Status langsung dari checklist Nexus Agent. Filter cepat, cari task, dan lihat fase mana yang sudah bergerak.</p>
+          <p class="lede">Status langsung dari checklist NexusMycelium. Filter cepat, cari task, dan lihat fase mana yang sudah bergerak.</p>
         </div>
         <div class="snapshot">
           <div>Sumber</div>
           <strong>TASKS.md</strong>
-          <div id="sourceState">snapshot tertanam</div>
+          <div id="sourceState" role="status" aria-live="polite">reconnecting</div>
         </div>
       </section>
 
@@ -332,7 +332,7 @@
   </div>
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <script id="embedded-data" type="application/json">{"phases":[{"id":"0","label":"Fondasi","raw":"Fase 0 — Fondasi","milestone":""},{"id":"1","label":"Kernel","raw":"Fase 1 — Kernel (🔒)","milestone":"M1: kernel jalan, plugin bisa hot-load."},{"id":"2","label":"Agent inti","raw":"Fase 2 — Agent inti","milestone":"M2: agent pertama yang benar-benar bekerja."},{"id":"3","label":"Aman","raw":"Fase 3 — Aman","milestone":""},{"id":"4","label":"Efisiensi (pembeda utama)","raw":"Fase 4 — Efisiensi (pembeda utama)","milestone":"M3: bukti angka penghematan di benchmark."},{"id":"5","label":"Ekstensi standar","raw":"Fase 5 — Ekstensi standar","milestone":""},{"id":"6","label":"System 1 (Laya/Jev)","raw":"Fase 6 — System 1 (Laya/Jev)","milestone":""},{"id":"7","label":"Self-evolve (jantung Nexus)","raw":"Fase 7 — Self-evolve (jantung Nexus)","milestone":"M4: agent memperbaiki dirinya dengan aman."},{"id":"8","label":"Kesadaran diri","raw":"Fase 8 — Kesadaran diri","milestone":""}],"tasks":[{"id":"0.1","size":"(S)","title":"Putuskan nama final; cek GitHub/npm/domain. Ganti scope `@nexus/*` bila perlu","criteria":"","status":"todo","phaseId":"0"},{"id":"0.2","size":"(S)","title":"Monorepo pnpm, TS strict, lint, vitest, CI.","criteria":"`pnpm check` hijau","status":"done","phaseId":"0"},{"id":"0.3","size":"(S)","title":"`AGENTS.md` + `docs/ARCHITECTURE.md` skeleton","criteria":"","status":"done","phaseId":"0"},{"id":"0.4","size":"(M)","title":"Benchmark awal: 20 tugas coding kecil + metrik (biaya, token, waktu, sukses).","criteria":"satu perintah menjalankan semuanya","status":"todo","phaseId":"0"},{"id":"1.1","size":"(M)","title":"Kontrak Plugin API final.","criteria":"`docs/PLUGIN_API.md` + tipe (draf sudah ada)","status":"todo","phaseId":"1"},{"id":"1.2","size":"(M)","title":"Loader/registry: urutan dependensi, hot swap, isolasi kegagalan.","criteria":"plugin dimuat/dibuang tanpa restart (baseline sudah ada)","status":"todo","phaseId":"1"},{"id":"1.3","size":"(S)","title":"Event bus dengan tipe event terdaftar (baseline sudah ada)","criteria":"","status":"todo","phaseId":"1"},{"id":"1.4","size":"(M)","title":"Config YAML + resolusi `plugins/` → `user/`.","criteria":"config user menimpa default tanpa mengubah file official","status":"todo","phaseId":"1"},{"id":"1.5","size":"(M)","title":"Sistem izin allow/ask/deny per tool.","criteria":"tool berbahaya meminta approval","status":"todo","phaseId":"1"},{"id":"2.1","size":"(M)","title":"Plugin `model-*` (satu provider dulu, interface generik)","criteria":"","status":"todo","phaseId":"2"},{"id":"2.2","size":"(M)","title":"Plugin `loop-react`.","criteria":"agent memanggil tool dalam loop","status":"todo","phaseId":"2"},{"id":"2.3","size":"(M)","title":"Tool `fs` dan `shell` (dengan izin).","criteria":"agent mengedit file di proyek uji","status":"todo","phaseId":"2"},{"id":"2.4","size":"(M)","title":"Sesi tersimpan (SQLite/JSONL), resume dan fork","criteria":"","status":"todo","phaseId":"2"},{"id":"2.5","size":"(S)","title":"UI CLI minimal","criteria":"","status":"todo","phaseId":"2"},{"id":"2.6","size":"(M)","title":"Jalankan benchmark.","criteria":"≥ 5 dari 20 tugas selesai end-to-end","status":"todo","phaseId":"2"},{"id":"3.1","size":"(L)","title":"Sandbox runner (container atau git worktree terisolasi)","criteria":"","status":"todo","phaseId":"3"},{"id":"3.2","size":"(M)","title":"Snapshot dan rollback berbasis git.","criteria":"satu perintah mengembalikan keadaan sebelum tugas","status":"todo","phaseId":"3"},{"id":"3.3","size":"(M)","title":"Budget guard (token, uang, waktu).","criteria":"agent berhenti saat batas tercapai","status":"todo","phaseId":"3"},{"id":"3.4","size":"(S)","title":"Trace log terstruktur","criteria":"","status":"todo","phaseId":"3"},{"id":"4.1","size":"(M)","title":"Prompt caching","criteria":"","status":"todo","phaseId":"4"},{"id":"4.2","size":"(M)","title":"Context compactor otomatis","criteria":"","status":"todo","phaseId":"4"},{"id":"4.3","size":"(M)","title":"Tool call paralel","criteria":"","status":"todo","phaseId":"4"},{"id":"4.4","size":"(M)","title":"Tool edit berbasis diff.","criteria":"token turun dibanding tulis ulang file","status":"todo","phaseId":"4"},{"id":"4.5","size":"(M)","title":"Router model murah/mahal","criteria":"","status":"todo","phaseId":"4"},{"id":"4.6","size":"(S)","title":"Dashboard CLI biaya dan token per tugas.","criteria":"ada baseline sebelum/sesudah","status":"todo","phaseId":"4"},{"id":"5.1","size":"(M)","title":"MCP client","criteria":"","status":"todo","phaseId":"5"},{"id":"5.2","size":"(S)","title":"Skills loader (SKILL.md)","criteria":"","status":"todo","phaseId":"5"},{"id":"5.3","size":"(S)","title":"Pembaca `AGENTS.md`","criteria":"","status":"todo","phaseId":"5"},{"id":"5.4","size":"(L)","title":"Memori v1: vault Markdown + `[[wikilink]]` + indeks SQLite","criteria":"","status":"todo","phaseId":"5"},{"id":"6.1","size":"(M)","title":"Interface plugin `judge`.","criteria":"bisa ganti Laya, Jev, atau fallback LLM","status":"todo","phaseId":"6"},{"id":"6.2","size":"(M)","title":"Integrasi Laya lokal (ONNX).","criteria":"berjalan di mesin dev","status":"todo","phaseId":"6"},{"id":"6.3","size":"(M)","title":"Uji akurasi di data sendiri (termasuk bahasa Indonesia) dan kalibrasi","criteria":"","status":"todo","phaseId":"6"},{"id":"6.4","size":"(M)","title":"Pakai untuk gate tool call dan pemilihan tool.","criteria":"LLM lebih jarang dipanggil, sukses tidak turun","status":"todo","phaseId":"6"},{"id":"7.1","size":"(L)","title":"Pipeline gate: worktree → lint/type → unit → eval → smoke sandbox → canary → swap → rollback","criteria":"","status":"todo","phaseId":"7"},{"id":"7.2","size":"(M)","title":"Tool `plugin.create`, `plugin.test`, `plugin.install`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.3","size":"(M)","title":"`agent-made/staging` dan `active`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.4","size":"(L)","title":"Hot reload plugin buatan agent.","criteria":"patch buruk otomatis ditolak","status":"todo","phaseId":"7"},{"id":"7.5","size":"(L)","title":"`patches.lock` + merge 3 arah + uji ulang patch user setelah update","criteria":"","status":"todo","phaseId":"7"},{"id":"7.6","size":"(L)","title":"Kristalisasi skill: pola berulang → script tanpa LLM.","criteria":"biaya tugas berulang turun","status":"todo","phaseId":"7"},{"id":"8.1","size":"(M)","title":"`self.inspect()` + `SELF.md` otomatis","criteria":"","status":"todo","phaseId":"8"},{"id":"8.2","size":"(M)","title":"Scheduler: goals, heartbeat, cron","criteria":"","status":"todo","phaseId":"8"},{"id":"8.3","size":"(M)","title":"Refleksi setelah tugas + catat tingkat sukses per jenis tugas","criteria":"","status":"todo","phaseId":"8"},{"id":"8.4","size":"(M)","title":"Skor keyakinan (dari judge) → bertanya atau eskalasi","criteria":"","status":"todo","phaseId":"8"},{"id":"8.5","size":"(L)","title":"Graph view live","criteria":"","status":"todo","phaseId":"8"}]}</script>
+  <script id="embedded-data" type="application/json">{"phases":[{"id":"0","label":"Fondasi","raw":"Fase 0 — Fondasi","milestone":""},{"id":"1","label":"Kernel","raw":"Fase 1 — Kernel (🔒)","milestone":"M1: kernel jalan, plugin bisa load/unload dasar; hot swap penuh belum ada."},{"id":"2","label":"Agent inti","raw":"Fase 2 — Agent inti","milestone":"M2: agent pertama yang benar-benar bekerja."},{"id":"3","label":"Aman","raw":"Fase 3 — Aman","milestone":""},{"id":"4","label":"Efisiensi (pembeda utama)","raw":"Fase 4 — Efisiensi (pembeda utama)","milestone":"M3: bukti angka penghematan di benchmark."},{"id":"5","label":"Ekstensi standar","raw":"Fase 5 — Ekstensi standar","milestone":""},{"id":"6","label":"System 1 (Laya/Jev)","raw":"Fase 6 — System 1 (Laya/Jev)","milestone":""},{"id":"7","label":"Self-evolve (jantung NexusMycelium)","raw":"Fase 7 — Self-evolve (jantung NexusMycelium)","milestone":"M4 (target): agent memperbaiki dirinya melalui gate; belum tersedia di MVP."},{"id":"8","label":"Kesadaran diri","raw":"Fase 8 — Kesadaran diri","milestone":""}],"tasks":[{"id":"0.1","size":"(S)","title":"Putuskan nama final; cek GitHub/npm/domain. ✓ product/display `NexusMycelium`, package root `nexusmycelium`, scope `@nexusmycelium/*`, CLI `nexus`","criteria":"product/display `NexusMycelium`, package root `nexusmycelium`, scope `@nexusmycelium/*`, CLI `nexus`","status":"done","phaseId":"0"},{"id":"0.2","size":"(S)","title":"Monorepo pnpm, TS strict, lint, vitest, CI.","criteria":"`corepack pnpm check` hijau","status":"done","phaseId":"0"},{"id":"0.3","size":"(S)","title":"`AGENTS.md` + `docs/ARCHITECTURE.md` skeleton","criteria":"","status":"done","phaseId":"0"},{"id":"0.4","size":"(M)","title":"Benchmark awal: 20 tugas coding kecil + metrik (biaya, token, waktu, sukses).","criteria":"`corepack pnpm bench:20` menjalankan 20/20 mock; contract test, lint, dan typecheck lulus (full suite punya blocker port dashboard terpisah)","status":"done","phaseId":"0"},{"id":"1.1","size":"(M)","title":"Kontrak Plugin API final.","criteria":"`docs/PLUGIN_API.md` + tipe (draf sudah ada)","status":"todo","phaseId":"1"},{"id":"1.2","size":"(M)","title":"Loader/registry: urutan dependensi, hot swap, isolasi kegagalan.","criteria":"plugin dimuat/dibuang tanpa restart (baseline load/unload; hot swap dan isolasi penuh belum ada)","status":"todo","phaseId":"1"},{"id":"1.3","size":"(S)","title":"Event bus dengan tipe event terdaftar (baseline sudah ada)","criteria":"","status":"todo","phaseId":"1"},{"id":"1.4","size":"(M)","title":"Config YAML + resolusi `plugins/` → `user/`.","criteria":"config user menimpa default tanpa mengubah file official; overlay dan plugin config divalidasi strict","status":"done","phaseId":"1"},{"id":"1.5","size":"(M)","title":"Sistem izin allow/ask/deny per tool.","criteria":"library permission gate; callback approval tersedia untuk integrator, CLI approval interaktif belum ada","status":"done","phaseId":"1"},{"id":"2.1","size":"(M)","title":"Plugin `model-*` (satu provider dulu, interface generik)","criteria":"","status":"done","phaseId":"2"},{"id":"2.2","size":"(M)","title":"Plugin `loop-react`.","criteria":"agent memanggil tool dalam loop","status":"done","phaseId":"2"},{"id":"2.3","size":"(M)","title":"Tool `fs` dan `shell` (dengan izin).","criteria":"agent mengedit file di proyek uji","status":"done","phaseId":"2"},{"id":"2.4","size":"(M)","title":"Sesi tersimpan (SQLite/JSONL), resume dan fork","criteria":"","status":"todo","phaseId":"2"},{"id":"2.5","size":"(S)","title":"UI CLI minimal","criteria":"","status":"done","phaseId":"2"},{"id":"2.6","size":"(M)","title":"Jalankan benchmark.","criteria":"≥ 5 dari 20 tugas selesai end-to-end (run mock 20-task sudah dilakukan, tetapi acceptance test 2.6 belum diverifikasi)","status":"todo","phaseId":"2"},{"id":"3.1","size":"(L)","title":"Sandbox runner (container atau git worktree terisolasi)","criteria":"","status":"todo","phaseId":"3"},{"id":"3.2","size":"(M)","title":"Snapshot dan rollback berbasis git.","criteria":"satu perintah mengembalikan keadaan sebelum tugas","status":"todo","phaseId":"3"},{"id":"3.3","size":"(M)","title":"Budget guard (token, uang, waktu).","criteria":"agent berhenti saat batas tercapai","status":"todo","phaseId":"3"},{"id":"3.4","size":"(S)","title":"Trace log terstruktur","criteria":"","status":"todo","phaseId":"3"},{"id":"4.1","size":"(M)","title":"Prompt caching","criteria":"","status":"todo","phaseId":"4"},{"id":"4.2","size":"(M)","title":"Context compactor otomatis","criteria":"","status":"todo","phaseId":"4"},{"id":"4.3","size":"(M)","title":"Tool call paralel","criteria":"","status":"todo","phaseId":"4"},{"id":"4.4","size":"(M)","title":"Tool edit berbasis diff.","criteria":"token turun dibanding tulis ulang file","status":"todo","phaseId":"4"},{"id":"4.5","size":"(M)","title":"Router model murah/mahal","criteria":"","status":"todo","phaseId":"4"},{"id":"4.6","size":"(S)","title":"Dashboard CLI biaya dan token per tugas.","criteria":"ada baseline sebelum/sesudah","status":"todo","phaseId":"4"},{"id":"5.1","size":"(M)","title":"MCP client","criteria":"","status":"todo","phaseId":"5"},{"id":"5.2","size":"(S)","title":"Skills loader (SKILL.md)","criteria":"","status":"todo","phaseId":"5"},{"id":"5.3","size":"(S)","title":"Pembaca `AGENTS.md`","criteria":"","status":"todo","phaseId":"5"},{"id":"5.4","size":"(L)","title":"Memori v1: vault Markdown + `[[wikilink]]` + indeks SQLite","criteria":"","status":"todo","phaseId":"5"},{"id":"6.1","size":"(M)","title":"Interface plugin `judge`.","criteria":"bisa ganti Laya, Jev, atau fallback LLM","status":"todo","phaseId":"6"},{"id":"6.2","size":"(M)","title":"Integrasi Laya lokal (ONNX).","criteria":"berjalan di mesin dev","status":"todo","phaseId":"6"},{"id":"6.3","size":"(M)","title":"Uji akurasi di data sendiri (termasuk bahasa Indonesia) dan kalibrasi","criteria":"","status":"todo","phaseId":"6"},{"id":"6.4","size":"(M)","title":"Pakai untuk gate tool call dan pemilihan tool.","criteria":"LLM lebih jarang dipanggil, sukses tidak turun","status":"todo","phaseId":"6"},{"id":"7.1","size":"(L)","title":"Pipeline gate: worktree → lint/type → unit → eval → smoke sandbox → canary → swap → rollback","criteria":"","status":"todo","phaseId":"7"},{"id":"7.2","size":"(M)","title":"Tool `plugin.create`, `plugin.test`, `plugin.install`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.3","size":"(M)","title":"`agent-made/staging` dan `active`","criteria":"","status":"todo","phaseId":"7"},{"id":"7.4","size":"(L)","title":"Hot reload plugin buatan agent.","criteria":"patch buruk otomatis ditolak","status":"todo","phaseId":"7"},{"id":"7.5","size":"(L)","title":"`patches.lock` + merge 3 arah + uji ulang patch user setelah update","criteria":"","status":"todo","phaseId":"7"},{"id":"7.6","size":"(L)","title":"Kristalisasi skill: pola berulang → script tanpa LLM.","criteria":"biaya tugas berulang turun","status":"todo","phaseId":"7"},{"id":"8.1","size":"(M)","title":"`self.inspect()` + `SELF.md` otomatis","criteria":"","status":"todo","phaseId":"8"},{"id":"8.2","size":"(M)","title":"Scheduler: goals, heartbeat, cron","criteria":"","status":"todo","phaseId":"8"},{"id":"8.3","size":"(M)","title":"Refleksi setelah tugas + catat tingkat sukses per jenis tugas","criteria":"","status":"todo","phaseId":"8"},{"id":"8.4","size":"(M)","title":"Skor keyakinan (dari judge) → bertanya atau eskalasi","criteria":"","status":"todo","phaseId":"8"},{"id":"8.5","size":"(L)","title":"Graph view live","criteria":"","status":"todo","phaseId":"8"}]}</script>
   <script>
     (() => {
       'use strict';
@@ -369,7 +369,7 @@
           if (line.startsWith('🏁 **') && phases.length) { phases[phases.length - 1].milestone = line.replace('🏁 ', '').replaceAll('**', '').trim(); continue; }
           const tm = line.match(taskRe);
           if (!tm || !current) continue;
-          const idSize = tm[2].split(' ', 1);
+          const idSize = tm[2].trim().split(/\s+/, 2);
           const rest = tm[3];
           const pieces = rest.split(' ✓ ');
           const mark = tm[1].toLowerCase();
@@ -380,8 +380,14 @@
         return { phases, tasks };
       }
       function updateSource(label) {
-        els.sourceState.textContent = label;
-        els.footerSource.textContent = label === 'live: TASKS.md' ? 'Sumber dimuat dari file TASKS.md melalui server lokal.' : 'Snapshot tertanam · gunakan “Muat ulang sumber” setelah TASKS.md berubah.';
+        const live = label.startsWith('live:');
+        els.sourceState.textContent = live ? 'live' : label;
+        els.footerSource.textContent = live ? 'Sumber dimuat dari file TASKS.md melalui server lokal.' : 'Snapshot tertanam · gunakan “Muat ulang sumber” setelah TASKS.md berubah.';
+      }
+      function setConnectionStatus(status) {
+        const live = status === 'live';
+        els.sourceState.textContent = live ? 'live' : 'reconnecting';
+        els.footerSource.textContent = live ? 'Sumber dimuat dari file TASKS.md melalui server lokal.' : 'Realtime tidak tersedia · gunakan “Muat ulang sumber” atau impor TASKS.md.';
       }
       function fillPhases() {
         const current = els.phase.value;
@@ -404,12 +410,35 @@
         els.activeSummary.textContent = counts.active ? `${counts.active} task aktif` : 'belum ada';
         els.activeSummary.style.color = counts.active ? 'var(--active)' : 'var(--muted)';
       }
-      function taskNode(task, phase) {
+      function taskNode(task) {
+        const status = Object.hasOwn(labels, task.status) ? task.status : 'todo';
         const el = document.createElement('article');
-        el.className = `task ${task.status}`;
-        el.innerHTML = `<div class="task-id">${task.id}</div><div class="task-main"><div class="task-title"></div>${task.criteria ? '<div class="task-criteria"></div>' : ''}</div><div class="task-side"><span class="badge ${classFor[task.status]}">${labels[task.status]}</span><span class="size">${task.size}</span></div>`;
-        el.querySelector('.task-title').textContent = task.title;
-        if (task.criteria) el.querySelector('.task-criteria').textContent = task.criteria;
+        el.className = `task ${status}`;
+        const id = document.createElement('div');
+        id.className = 'task-id';
+        id.textContent = task.id;
+        const main = document.createElement('div');
+        main.className = 'task-main';
+        const title = document.createElement('div');
+        title.className = 'task-title';
+        title.textContent = task.title;
+        main.append(title);
+        if (task.criteria) {
+          const criteria = document.createElement('div');
+          criteria.className = 'task-criteria';
+          criteria.textContent = task.criteria;
+          main.append(criteria);
+        }
+        const side = document.createElement('div');
+        side.className = 'task-side';
+        const badge = document.createElement('span');
+        badge.className = `badge ${classFor[status]}`;
+        badge.textContent = labels[status];
+        const size = document.createElement('span');
+        size.className = 'size';
+        size.textContent = task.size;
+        side.append(badge, size);
+        el.append(id, main, side);
         return el;
       }
       function render() {
@@ -424,26 +453,66 @@
           const done = phaseTasks.filter(t => t.status === 'done').length;
           const pct = Math.round((done / phaseTasks.length) * 100);
           const head = document.createElement('div'); head.className = 'phase-head';
-          head.innerHTML = `<div class="phase-title"><span class="phase-number">F${phase.id}</span><span class="phase-name"></span></div><div class="phase-meta">${phaseTasks.length} task · ${pct}% selesai</div>`;
-          head.querySelector('.phase-name').textContent = phase.label;
-          const bar = document.createElement('div'); bar.className = 'phase-bar'; bar.innerHTML = `<span style="width:${pct}%"></span>`;
+          const phaseTitle = document.createElement('div'); phaseTitle.className = 'phase-title';
+          const phaseNumber = document.createElement('span'); phaseNumber.className = 'phase-number'; phaseNumber.textContent = `F${phase.id}`;
+          const phaseName = document.createElement('span'); phaseName.className = 'phase-name'; phaseName.textContent = phase.label;
+          phaseTitle.append(phaseNumber, phaseName);
+          const phaseMeta = document.createElement('div'); phaseMeta.className = 'phase-meta'; phaseMeta.textContent = `${phaseTasks.length} task · ${pct}% selesai`;
+          head.append(phaseTitle, phaseMeta);
+          const bar = document.createElement('div'); bar.className = 'phase-bar';
+          const fill = document.createElement('span'); fill.style.width = `${pct}%`; bar.append(fill);
           const list = document.createElement('div'); list.className = 'task-list';
-          phaseTasks.forEach((task) => { list.append(taskNode(task, phase)); });
+          phaseTasks.forEach((task) => { list.append(taskNode(task)); });
           section.append(head, bar, list);
           if (phase.milestone) { const note = document.createElement('div'); note.className = 'phase-meta'; note.style.marginTop = '8px'; note.textContent = `Milestone: ${phase.milestone}`; section.append(note); }
           els.phaseList.append(section);
         }
         els.empty.hidden = visible !== 0;
-        els.result.innerHTML = visible === state.data.tasks.length ? `Menampilkan <strong>${visible}</strong> task` : `Menampilkan <strong>${visible}</strong> dari ${state.data.tasks.length} task`;
+        els.result.textContent = visible === state.data.tasks.length ? `Menampilkan ${visible} task` : `Menampilkan ${visible} dari ${state.data.tasks.length} task`;
       }
       async function reloadSource() {
         try {
-          const response = await fetch('TASKS.md', { cache: 'no-store' });
+          let response;
+          try {
+            response = await fetch('/api/tasks', { cache: 'no-store' });
+            if (!response.ok) response = await fetch('TASKS.md', { cache: 'no-store' });
+          } catch {
+            response = await fetch('TASKS.md', { cache: 'no-store' });
+          }
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          state.data = parseTasks(await response.text());
+          const isJson = response.headers.get('content-type')?.includes('application/json');
+          const payload = isJson ? await response.json() : await response.text();
+          const markdown = typeof payload === 'string' ? payload : payload?.markdown;
+          if (typeof markdown !== 'string') throw new Error('Format sumber TASKS.md tidak valid');
+          state.data = parseTasks(markdown);
           updateSource('live: TASKS.md'); render(); showToast('TASKS.md berhasil dimuat.');
         } catch (error) {
+          setConnectionStatus('reconnecting');
           showToast('Live load gagal. Buka lewat local server atau gunakan Impor TASKS.md.');
+          console.warn(error);
+        }
+      }
+      function connectEvents() {
+        if (!('EventSource' in window)) {
+          setConnectionStatus('reconnecting');
+          showToast('Realtime tidak tersedia; tombol muat ulang tetap tersedia.');
+          return;
+        }
+        try {
+          const source = new EventSource('/events');
+          source.onopen = () => { setConnectionStatus('live'); };
+          source.addEventListener('ready', () => { setConnectionStatus('live'); });
+          source.addEventListener('tasks', () => { void reloadSource(); });
+          source.onerror = () => {
+            setConnectionStatus('reconnecting');
+            if (source.readyState === EventSource.CLOSED) {
+              source.close();
+              showToast('Realtime dashboard terputus; tombol muat ulang tetap tersedia.');
+            }
+          };
+        } catch (error) {
+          setConnectionStatus('reconnecting');
+          showToast('Realtime tidak tersedia; tombol muat ulang tetap tersedia.');
           console.warn(error);
         }
       }
@@ -466,6 +535,8 @@
       });
       $('clearBtn').addEventListener('click', () => { state.status = 'all'; state.phase = 'all'; state.query = ''; els.search.value = ''; document.querySelectorAll('.status-tab').forEach((item) => { item.setAttribute('aria-pressed', String(item.dataset.status === 'all')); }); render(); });
       render();
+      void reloadSource();
+      connectEvents();
     })();
   </script>
 </body>

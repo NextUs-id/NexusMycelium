@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["kernel/src", "plugins/*/src"]
+  "include": ["kernel/src", "plugins/*/src", "src", "benchmarks"]
 }
