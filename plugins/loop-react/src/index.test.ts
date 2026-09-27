@@ -402,6 +402,57 @@ describe("loop-react resume hooks", () => {
     }
   });
 
+  it("accepts usage written before the cache-read count existed", async () => {
+    // Compatibility lock for the 4.1b contract change: a report shaped the way every reader wrote it
+    // before `cachedTokens` existed must stay fully usable, and must not grow a fabricated zero.
+    const oldShape: ModelUsage = {
+      inputTokens: 900,
+      outputTokens: 60,
+      totalTokens: 960,
+      source: "model-openai",
+    };
+    const result = await createAgentRunner({
+      model: sequence([
+        {
+          type: "tool_calls",
+          calls: [{ id: "call-1", name: "echo", arguments: { value: 1 } }],
+          usage: oldShape,
+        },
+        { type: "final", text: "done", usage: oldShape },
+      ]),
+      tools: echoTools(),
+      limits,
+      budget: resolveBudgetPolicy({
+        enabled: true,
+        maxTotalTokens: 10_000,
+        prices: { mock: { inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 1 } },
+      }),
+    }).run("old shape");
+    expect(result).toMatchObject({ status: "completed", steps: 2, toolCalls: 1 });
+    expect(result.usage).toEqual({
+      inputTokens: 1800,
+      outputTokens: 120,
+      totalTokens: 1920,
+      source: "model-openai",
+    });
+    // Absent stays absent: an unreported cache read is never zero-filled, which would under-report.
+    expect(result.usage).not.toHaveProperty("cachedTokens");
+    // A reported zero is a real report and survives as a zero.
+    const zero = await createAgentRunner({
+      model: sequence([{ type: "final", text: "done", usage: { ...oldShape, cachedTokens: 0 } }]),
+      tools: echoTools(),
+      limits,
+      budget: resolveBudgetPolicy({ enabled: true, maxTotalTokens: 10_000 }),
+    }).run("zero cache reads");
+    expect(zero.usage).toEqual({
+      inputTokens: 900,
+      outputTokens: 60,
+      totalTokens: 960,
+      source: "model-openai",
+      cachedTokens: 0,
+    });
+  });
+
   it("keeps the cacheable prefix byte-identical on every turn of a run", async () => {
     const { model, seen } = recorder([
       { type: "tool_calls", calls: [{ id: "call-1", name: "echo", arguments: { value: 1 } }] },

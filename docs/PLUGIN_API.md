@@ -217,7 +217,7 @@ Menambah nama baru ke `PluginEventMap`, memberi trace capability atau service `t
 
 - **`ModelUsage.cachedTokens?: number`** — satu field opsional yang ditambahkan di 4.1b. Aditif:
   plugin yang membaca `usage` dan mengabaikan field itu tidak perlu berubah, dan plugin yang menulis
-  `usage` tanpa field itu tetap valid. Tidak ada field yang dihapus atau berubah makna.
+  `usage` tanpa field itu tetap valid. Tidak ada field yang dihapus atau berubah makna. Kunci kompatibilitasnya ada di "accepts usage written before the cache-read count existed" (`plugins/loop-react/src/index.test.ts`): laporan berbentuk lama tetap dipakai penuh, dan `cachedTokens` yang tidak dilaporkan **tidak** di-zero-fill.
 - **`plugins["model-openai"].promptCacheKey`** — key opsional pada `ModelPluginConfigSchema` yang
   `.strict()`. Config lama tanpa key tetap valid; config dengan key yang tidak lolos
   `z.string().max(256).pipe(safeTextSchema)` ditolak saat resolve, bukan diabaikan. Blok `model:`
