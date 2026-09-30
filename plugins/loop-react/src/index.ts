@@ -186,6 +186,11 @@ export function createAgentRunner(options: {
    * than cuts a transcript it cannot shorten or cannot cut safely, so this can never break a pair.
    */
   compaction?: CompactionPolicy;
+  /**
+   * Run the tool calls of one turn together instead of one after another. Off by default: a turn whose
+   * calls have side effects keeps the serial order unless a caller asks for otherwise.
+   */
+  parallelToolCalls?: boolean;
 }): AgentRunner {
   return {
     async run(task, runOptions) {
@@ -302,6 +307,35 @@ export function createAgentRunner(options: {
         }
         return undefined;
       };
+      /**
+       * One turn's calls, always reported in call order. Together when the runner was asked for it,
+       * one after another otherwise; a serial turn stops taking new calls the moment the run is
+       * aborted, while a parallel turn has already started them all.
+       */
+      const runCalls = async (
+        calls: readonly ModelToolCall[],
+        signal: AbortSignal,
+      ): Promise<{ value: string; failure?: string }[]> => {
+        const execute = async (call: ModelToolCall): Promise<{ value: string; failure?: string }> => {
+          try {
+            if (!options.tools.has(call.name)) throw new Error(`unknown tool: ${call.name}`);
+            const output = await options.tools.get(call.name).execute(call.arguments, signal);
+            return { value: observation(true, output) };
+          } catch (error) {
+            const failure = errorText(error);
+            return { value: observation(false, undefined, failure), failure };
+          }
+        };
+        if (options.parallelToolCalls !== true) {
+          const values: { value: string; failure?: string }[] = [];
+          for (const call of calls) {
+            if (signal.aborted) break;
+            values.push(await execute(call));
+          }
+          return values;
+        }
+        return Promise.all(calls.map(execute));
+      };
       /** Answers every tool call of a budget-stopped turn so the transcript is never left unpaired. */
       const unpair = (reason: string, calls: readonly ModelToolCall[], from: number): void => {
         for (const call of calls.slice(from)) {
@@ -369,36 +403,38 @@ export function createAgentRunner(options: {
                   );
             }
             messages.push({ role: "assistant", content: "", toolCalls: modelResult.calls });
-            for (const [index, call] of modelResult.calls.entries()) {
-              if (toolCalls >= limits.maxToolCalls) {
+            // The ceiling is decided before anything runs, so a turn can never overshoot it.
+            const allowed = Math.max(0, Math.min(modelResult.calls.length, limits.maxToolCalls - toolCalls));
+            const answered = await runCalls(modelResult.calls.slice(0, allowed), controller.signal);
+            // Counted by what actually started: a parallel turn starts them all, a serial turn stops
+            // taking new ones the moment the run is aborted.
+            toolCalls += answered.length;
+            if (controller.signal.aborted) {
+              const budgeted = stopResult;
+              const reason = budgeted?.error;
+              if (budgeted !== undefined && reason !== undefined && budgetStops.has(reason)) {
+                // A turn the budget cut contributes no results at all: whatever finished before the
+                // stop is discarded rather than half-reported, which is what the serial loop did too.
+                unpair(reason, modelResult.calls, 0);
+                // The stop snapshot froze `toolCalls` before this turn started, so the live count wins.
+                return { ...budgeted, toolCalls, observations: [...observations] };
+              }
+              return stop("Agent stopped: cancelled.", "agent cancelled");
+            }
+            for (const [index, call] of modelResult.calls.slice(0, answered.length).entries()) {
+              const { value, failure } = answered[index] ?? { value: observation(false) };
+              // Call order decides which failure is reported, not the order the tools finished in.
+              lastToolFailure = failure;
+              observations.push(value);
+              messages.push({ role: "tool", content: value, toolCallId: call.id });
+            }
+            if (allowed < modelResult.calls.length) {
+              for (const call of modelResult.calls.slice(allowed)) {
                 const limited = observation(false, undefined, "tool call limit reached");
                 observations.push(limited);
                 messages.push({ role: "tool", content: limited, toolCallId: call.id });
-                return stop("Agent stopped: tool call limit reached.", "tool call limit reached");
               }
-              toolCalls += 1;
-              let output: string | undefined;
-              let failure: string | undefined;
-              try {
-                if (!options.tools.has(call.name)) throw new Error(`unknown tool: ${call.name}`);
-                output = await options.tools.get(call.name).execute(call.arguments, controller.signal);
-              } catch (error) {
-                failure = errorText(error);
-              }
-              if (controller.signal.aborted) {
-                const budgeted = stopResult;
-                const reason = budgeted?.error;
-                if (budgeted !== undefined && reason !== undefined && budgetStops.has(reason)) {
-                  unpair(reason, modelResult.calls, index);
-                  return { ...budgeted, observations: [...observations] };
-                }
-                return stop("Agent stopped: cancelled.", "agent cancelled");
-              }
-              lastToolFailure = failure;
-              const value =
-                failure === undefined ? observation(true, output) : observation(false, undefined, failure);
-              observations.push(value);
-              messages.push({ role: "tool", content: value, toolCallId: call.id });
+              return stop("Agent stopped: tool call limit reached.", "tool call limit reached");
             }
             await notify(steps);
           }

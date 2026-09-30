@@ -1117,4 +1117,183 @@ describe("loop-react budget guard", () => {
     expect(contents.some((content) => content.startsWith("compacted transcript: "))).toBe(true);
     expect(contents.some((content) => content.includes("zzzz"))).toBe(false);
   });
+
+  it("runs the calls of one turn one after another by default", async () => {
+    const overlap = { peak: 0, live: 0 };
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "slow",
+      description: "records how many of these overlap",
+      inputSchema: { type: "object" },
+      execute: async () => {
+        overlap.live += 1;
+        overlap.peak = Math.max(overlap.peak, overlap.live);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        overlap.live -= 1;
+        return "done";
+      },
+    });
+    const result = await createAgentRunner({
+      model: sequence([
+        {
+          type: "tool_calls",
+          calls: [
+            { id: "a", name: "slow", arguments: {} },
+            { id: "b", name: "slow", arguments: {} },
+          ],
+        },
+        { type: "final", text: "done" },
+      ]),
+      tools,
+      limits: { maxSteps: 3, maxToolCalls: 4, timeoutMs: 2_000 },
+    }).run("twice");
+    expect(result.status).toBe("completed");
+    expect(overlap.peak).toBe(1);
+  });
+
+  it("runs the calls of one turn together when parallel execution is asked for", async () => {
+    const overlap = { peak: 0, live: 0 };
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "slow",
+      description: "records how many of these overlap",
+      inputSchema: { type: "object" },
+      execute: async () => {
+        overlap.live += 1;
+        overlap.peak = Math.max(overlap.peak, overlap.live);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        overlap.live -= 1;
+        return "done";
+      },
+    });
+    const recorded = recorder([
+      {
+        type: "tool_calls",
+        calls: [
+          { id: "a", name: "slow", arguments: {} },
+          { id: "b", name: "slow", arguments: {} },
+        ],
+      },
+      { type: "final", text: "done" },
+    ]);
+    const result = await createAgentRunner({
+      model: recorded.model,
+      tools,
+      limits: { maxSteps: 3, maxToolCalls: 4, timeoutMs: 2_000 },
+      parallelToolCalls: true,
+    }).run("twice");
+    expect(result.status).toBe("completed");
+    expect(overlap.peak).toBe(2);
+  });
+
+  it("keeps the observation order the model asked for, whatever order the tools finish in", async () => {
+    const tools = new ToolRegistry();
+    const delay: Record<string, number> = { first: 20, second: 10, third: 0 };
+    tools.register({
+      name: "step",
+      description: "finishes after a per-name delay",
+      inputSchema: { type: "object" },
+      execute: async (args: Record<string, unknown>) => {
+        const name = String(args.name ?? "");
+        await new Promise((resolve) => setTimeout(resolve, delay[name] ?? 0));
+        return name;
+      },
+    });
+    const recorded = recorder([
+      {
+        type: "tool_calls",
+        calls: [
+          { id: "a", name: "step", arguments: { name: "first" } },
+          { id: "b", name: "step", arguments: { name: "second" } },
+          { id: "c", name: "step", arguments: { name: "third" } },
+        ],
+      },
+      { type: "final", text: "done" },
+    ]);
+    const result = await createAgentRunner({
+      model: recorded.model,
+      tools,
+      limits: { maxSteps: 3, maxToolCalls: 4, timeoutMs: 2_000 },
+      parallelToolCalls: true,
+    }).run("three");
+    expect(result.status).toBe("completed");
+    // The transcript the model sees is still call order, not finish order.
+    const last = recorded.seen.at(-1) ?? [];
+    const results = last.filter((message) => message.role === "tool").map((m) => m.toolCallId);
+    expect(results).toEqual(["a", "b", "c"]);
+    expect(result.observations.map((value) => (JSON.parse(value) as { output: string }).output)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+  });
+
+  it("stops a parallel turn on the tool call limit without leaving an unanswered call", async () => {
+    const tools = new ToolRegistry();
+    const ran: string[] = [];
+    tools.register({
+      name: "note",
+      description: "records that it ran",
+      inputSchema: { type: "object" },
+      execute: async (args: Record<string, unknown>) => {
+        const name = String(args.name ?? "");
+        ran.push(name);
+        return name;
+      },
+    });
+    const recorded = recorder([
+      {
+        type: "tool_calls",
+        calls: [
+          { id: "a", name: "note", arguments: { name: "one" } },
+          { id: "b", name: "note", arguments: { name: "two" } },
+          { id: "c", name: "note", arguments: { name: "three" } },
+        ],
+      },
+      { type: "final", text: "never reached" },
+    ]);
+    const result = await createAgentRunner({
+      model: recorded.model,
+      tools,
+      limits: { maxSteps: 3, maxToolCalls: 2, timeoutMs: 2_000 },
+      parallelToolCalls: true,
+    }).run("three");
+    expect(result.status).toBe("stopped");
+    expect(result.error).toBe("tool call limit reached");
+    expect(ran).toEqual(["one", "two"]);
+    const last = recorded.seen.at(-1) ?? [];
+    expect(last.filter((message) => message.role === "tool")).toHaveLength(0);
+  });
+
+  it("keeps the last failure in call order, not in finish order", async () => {
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "fail",
+      description: "fails after a per-name delay",
+      inputSchema: { type: "object" },
+      execute: async (args: Record<string, unknown>) => {
+        const name = String(args.name ?? "");
+        await new Promise((resolve) => setTimeout(resolve, name === "slow" ? 20 : 0));
+        throw new Error(`broken ${name}`);
+      },
+    });
+    const result = await createAgentRunner({
+      model: sequence([
+        {
+          type: "tool_calls",
+          calls: [
+            { id: "a", name: "fail", arguments: { name: "slow" } },
+            { id: "b", name: "fail", arguments: { name: "fast" } },
+          ],
+        },
+        { type: "final", text: "unreachable" },
+      ]),
+      tools,
+      limits: { maxSteps: 3, maxToolCalls: 4, timeoutMs: 2_000 },
+      parallelToolCalls: true,
+    }).run("fail twice");
+    // The later call in call order owns the reported failure, the same rule the serial loop used.
+    expect(result.status).toBe("error");
+    expect(result.error).toBe("broken fast");
+  });
 });

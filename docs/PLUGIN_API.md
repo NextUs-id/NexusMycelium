@@ -343,6 +343,50 @@ tidak ada batas aman atau ringkasan tidak lebih pendek dari span yang dibuang.
   terpisah dengan adapter dan compatibility test; schema v1 saat ini hanya melihat ringkasan
   sebagai `ModelMessage` biasa.
 
+## Tool call paralel dan batasnya terhadap Plugin API (Task 4.3)
+
+Task 4.3 menggeser satu lapis loop: pemanggilan tool **dalam satu giliran** bisa dijalankan
+bersamaan, dan urutan yang dilihat model tidak berubah sama sekali. Kernel, kontrak, event, config,
+dan `schemaVersion` session **tidak berubah** pada task ini.
+
+### Yang masuk ke source, dan sifatnya
+
+- **`createAgentRunner({ parallelToolCalls: true })`** — option pada factory loop, **mati secara
+  default**. Tanpa option itu, satu giliran tetap dijalankan satu per satu seperti sebelumnya; test
+  "runs the calls of one turn one after another by default" memalsukannya.
+- **`runCalls()`** mengembalikan hasil **selalu dalam urutan panggilan**, baik serial maupun paralel.
+  Urutan transcript yang dilihat model adalah urutan yang diminta model, bukan urutan tool selesai.
+- **Plafon `maxToolCalls` diputuskan sebelum apa pun dijalankan.** Jadi satu giliran tidak pernah
+  melewati plafon, dan panggilan yang tidak sempat dijalankan dijawab dengan
+  `tool call limit reached` seperti sebelumnya.
+- **Kegagalan dilaporkan menurut urutan panggilan**: panggilan gagal yang terakhir dalam urutan
+  panggilan yang memiliki `AgentResult.error` — aturan yang sama dengan loop serial.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Semua panggilan satu giliran mulai bersamaan.** Kalau run-nya di-abort di tengah giliran,
+  panggilan yang lain **sudah berjalan** dan efek sampingnya bisa terjadi. Loop serial berhenti
+  mengambil panggilan baru begitu run di-abort; yang paralel tidak bisa. Itu konsekuensi mode
+  paralel, bukan bug — dan itu alasan mode ini mati secara default.
+- **Tidak ada transaksi, tidak ada rollback tool, tidak ada pengurutan antar tool.** Dua tool yang
+  menulis file yang sama dalam satu giliran akan saling menimpa dalam urutan penyelesaian yang
+  tidak bisa diprediksi.
+- **Giliran yang dihentikan budget tidak menyumbang hasil apa pun.** Kalau stop terjadi di tengah
+  giliran, semua hasil giliran itu dibuang dan diganti alasan stop, persis seperti sebelumnya —
+  bukan setengah dilaporkan. `AgentResult.toolCalls` pada hasil itu dihitung ulang dari jumlah yang
+  benar-benar berjalan, karena snapshot stop membekukannya sebelum giliran dimulai.
+- **Tidak ada config key.** `plugins["loop-react"]` tidak punya kunci untuk ini, jadi yang tersedia
+  hanya option factory; menyalakannya lewat config butuh perubahan kernel dan task sendiri.
+- **Tidak ada pengukuran.** Tidak ada harness yang mengukur waktu hemat mode paralel, jadi jangan
+  menulis "tool call paralel lebih cepat" sebagai hasil yang sudah dibuktikan.
+
+### Aturan untuk task berikutnya
+
+- Kalau mode paralel dibuat on-by-default atau dipindah ke config, sertakan test yang membuktikannya
+  aman untuk tool dengan efek samping, bukan hanya test yang mengukur overlap.
+- Kalau suatu task butuh tool paralel yang benar-benar terisolasi, itu bukan fitur loop — itu
+  mekanisme tool (namespace, lock, atau tool runner sendiri) dan butuh task tersendiri.
+
 ## Test dan CI secret-free
 
 

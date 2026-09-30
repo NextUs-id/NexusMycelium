@@ -770,6 +770,58 @@ Task ini menutup batas yang tercatat di 4.2c: "compaction hemat token" belum pun
    terjangkau menghasilkan `charsSaved` 0 dan **exit 1**.
 5. "passes the gate on the canonical cap" — exit 0.
 
+## Status Task 4.3 — Tool call paralel
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 86 files`, `tsc --noEmit` bersih, **493 test di 34 file** + 2 `node --test`) dan
+`git diff --check` tanpa output. `bench:20`/`bench:accept` tidak dijalankan ulang untuk task ini dan
+**tidak boleh dikutip sebagai achievement 4.3**: canonical benchmark memakai `model-mock` yang tidak pernah
+menghasilkan satu giliran dengan dua panggilan tool, jadi ia tidak bisa bicara apa pun soal mode ini.
+Angka 493 = 488 (4.2d) + 5 test 4.3.
+
+### Bentuk yang sudah ada di source
+
+- **`parallelToolCalls?: boolean`** pada `createAgentRunner` (`plugins/loop-react/src/index.ts`),
+  **mati secara default**. `runCalls()` menjalankan satu giliran dengan `Promise.all` saat option itu
+  `true`, dan satu per satu selain itu.
+- **Urutan transcript dijamin urutan panggilan.** Hasil dikumpulkan per indeks, lalu observation dan
+  pesan `tool` didorong dalam urutan itu, jadi model melihat urutan yang dia minta walaupun tool
+  selesai dengan urutan lain.
+- **Plafon `maxToolCalls` dihitung sebelum eksekusi** (`allowed`), dan panggilan yang tidak sempat
+  dijalankan tetap dijawab `tool call limit reached`.
+- **Kegagalan mengikuti urutan panggilan**, dan `AgentResult.toolCalls` pada hasil budget-stop
+  dihitung dari yang benar-benar berjalan, bukan dari snapshot stop yang membeku.
+
+### Yang TIDAK ada di 4.3
+
+- **Tidak ada config key.** Yang ada hanya option factory; menyalakannya lewat
+  `plugins["loop-react"]` butuh perubahan kernel, dan 4.3 tidak mendapat izin itu.
+- **Tidak on by default**, dan alasannya bukanperformanya: semua panggilan satu giliran mulai
+  bersamaan, jadi efek samping tool yang berjalan setelah run di-abort itu nyata.
+- **Tidak ada transaksi, lock, atau rollback tool.** Dua tool yang menulis nama file yang sama dalam
+  satu giliran saling menimpa dengan urutan yang tidak bisa diprediksi.
+- **Tidak ada pengukuran kecepatan.** Tidak ada harness yang membandingkan wall-clock serial vs
+  paralel, jadi klaim "lebih cepat" belum terbukti dan tidak boleh ditulis.
+- **Tidak ada tool paralel lintas giliran.** Hanya pemanggilan dalam satu giliran; tidak ada lagi
+  scheduling global.
+
+### Kriteria falsifiable 4.3
+
+1. "runs the calls of one turn one after another by default" — `overlap.peak` 1 tanpa option
+   (`plugins/loop-react/src/index.test.ts`).
+2. "runs the calls of one turn together when parallel execution is asked for" — `overlap.peak` 2.
+3. "keeps the observation order the model asked for, whatever order the tools finish in" — tiga tool
+   dengan delay 20/10/0 ms, dan `toolCallId` di transcript tetap `["a","b","c"]` dengan output
+   `["first","second","third"]` dalam observation.
+4. "stops a parallel turn on the tool call limit without leaving an unanswered call" — `maxToolCalls`
+   2 dengan 3 panggilan: hanya dua yang jalan, status `stopped` dengan `tool call limit reached`.
+5. "keeps the last failure in call order, not in finish order" — panggilan lambat gagal lebih dulu,
+   tetapi error yang dilaporkan adalah milik panggilan kedua.
+
+**Dipalsukan**: membuat mode paralel selalu aktif menggagalkan test 1 **dan** test budget "never
+leaves the tool calls of a budget-stopped turn unpaired"; membuat `Promise.all` tidak pernah dipakai
+menggagalkan test 2.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.
