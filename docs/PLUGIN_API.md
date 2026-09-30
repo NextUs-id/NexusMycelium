@@ -250,6 +250,72 @@ Menambah nama baru ke `PluginEventMap`, memberi trace capability atau service `t
   pengurangan `inputTokens`, dan harus menulis di `benchmarks/README.md` bahwa angkanya provenance
   provider `mock` selama suite live masih ditunda.
 
+## Context compaction dan batasnya terhadap Plugin API (Task 4.2)
+
+Task 4.2 di `TASKS.md` adalah "Context compactor otomatis". Yang masuk ke working tree adalah satu
+modul plugin baru, `plugins/loop-react/src/context.ts`, plus pemanggilnya di
+`plugins/loop-react/src/index.ts`. **Kernel tidak berubah pada task ini**: tidak ada tipe, event,
+capability, service, tool, atau key config baru, dan `schemaVersion` session tetap 1.
+
+### Yang masuk ke source, dan sifatnya
+
+- **`compactMessages(messages, policy, previous?)`** adalah fungsi murni: ia mengembalikan array
+  baru atau `undefined`. Ia tidak pernah mutate pesan yang diberikan, dan `undefined` berarti
+  "jangan dipadatkan" — bukan "dipadatkan dengan hasil kosong".
+- **Policy** adalah `{ maxChars, keepMessages }` dan datang dari pemanggil. Default plugin adalah
+  `DEFAULT_COMPACTION` = `{ maxChars: 48_000, keepMessages: 6 }`, aktif tanpa konfigurasi apa pun.
+- **Satu `system` message menggantikan span yang dibuang.** Yang selalu utuh adalah head — system
+  message di depan dan user turn pertama — dan `keepMessages` terakhir. Isi ringkasan hanya
+  menghitung: jumlah pesan terbuang, nama tool yang dipakai (maksimal 8 nama, sisanya
+  `(+N more)`), dan jumlah hasil tool yang gagal. **Tidak ada isi pesan, argumen tool, path, atau
+  teks model yang masuk ke ringkasan**, dan panjangnya dibatasi 400 karakter.
+- **Pass berikutnya melipat ringkasan sebelumnya**, bukan menumpuknya: ringkasan lama dikenali
+  hanya dari kecocokan teks persis pada posisi head, lalu dihitung ulang bersama span baru. Kalau
+  teksnya tidak cocok persis, pesan itu diperlakukan sebagai pesan biasa — jadi transcript yang
+  hanya *mirip* ringkasan tidak bisa memalsukan pemusuannya.
+- **Tiga alasan menolak**, dan ketiganya berarti transcript tidak berubah sama sekali: transcript
+  sudah di bawah cap; tidak ada batas potong yang aman; atau ringkasan tidak lebih pendek dari
+  span yang dibuang. Karena setiap pass yang berhasil juga selalu memperpendek transcript, loop
+  pemanggil pasti berhenti.
+- **Pasangan tool call dan hasil tool dijaga dua arah**: tidak ada hasil tool yang dipertahankan
+  sementara tool call-nya terbuang, dan tidak ada tool call terbuang sementara hasil tool-nya
+  dipertahankan. Head yang memuat ringkasan tidak pernah dihitung sebagai transcript asli.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Bukan peringkas LLM.** Tidak ada panggilan model tambahan, tidak ada biaya tambahan, dan tidak
+  ada api key baru. Yang dibuang adalah isi verbatim dan diganti hitungan; keputusan apa yang penting
+  dari transcript lama hilang bagi model.
+- **Capnya karakter, bukan token.** Plugin tidak memiliki tokenizer dan tidak memperkirakan jumlah
+  token. `maxChars` adalah proxy yang murah, dan metering budget tetap memakai angka provider
+  (`ModelUsage`), bukan hasil hitungan karakter.
+- **Belum bisa dikonfigurasi.** `LoopPluginConfigSchema` di `kernel/src/config.ts` masih
+  `AgentOverlaySchema` dan `.strict()`, jadi `plugins["loop-react"].context` **ditolak saat config
+  resolve**. Menambahkannya berarti perubahan kernel, dan 4.2 tidak mengizinkan itu; yang ada
+  sekarang hanya policy default plus opsi `compaction` pada `createAgentRunner` untuk integrator
+  yang memanggil factory secara langsung. Configurable adalah task sendiri dengan migration note.
+- **`AgentResult` tidak punya field compaction.** Transkrip hasil compaction terlihat lewat
+  `AgentStepRecord.messages` yang dikirim ke `onStep` — dan itu berarti **ringkasan ikut
+  dipersistensi** ke session store apa adanya oleh pemanggil. Session yang di-resume karena itu
+  mewarisi ringkasan, dan tidak ada cara memunculkan kembali pesan yang sudah terbuang. Bentuk
+  record session tidak berubah: tidak ada field baru, tidak ada `schemaVersion` baru.
+- **Tidak ada bedanya antara satu hasil tool besar dan banyak hasil kecil.** Yang dipadatkan adalah
+  *[span]*, bukan isi satu pesan, jadi satu hasil tool 16.000 karakter tetap dikirim utuh.
+- **Tidak ada pengujian pada transcript yang tidak bisa dipotong.** Kalau tidak ada batas aman,
+  compactor menolak dan transcript dikirim utuh — itu batas yang disengaja, bukan kegagalan.
+
+### Aturan untuk task berikutnya
+
+- Kalau 4.2b menjadikan compaction configurable, itu perubahan kernel: `LoopPluginConfigSchema`
+ (strict) dan `config/default.yaml`, plus migration note karena config lama tanpa key harus tetap
+  valid.一下 Jangan menulis "compaction bisa diatur" sebelum key itu benar-benar ada dan punya test.
+- Kalau suatu task menjumlahkan `transcriptChars` ke meter budget, itu bridging baru antar lapis dan
+  butuh test dari jalur config sampai run, seperti `configBudget()` pada 3.3. Sampai itu terjadi,
+  compaction **tidak** mengubah `AgentUsage` maupun alasan stop apa pun.
+- Kalau session perlu menyimpan ringkasan sebagai field sendiri (bukan pesan biasa), itu task
+  terpisah dengan adapter dan compatibility test; schema v1 saat ini hanya melihat ringkasan
+  sebagai `ModelMessage` biasa.
+
 ## Test dan CI secret-free
 
 

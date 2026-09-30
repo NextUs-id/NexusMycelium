@@ -29,6 +29,7 @@ import loopReact, {
   BUDGET_TIME,
   BUDGET_TOKENS,
   BUDGET_USAGE_UNAVAILABLE,
+  type CompactionPolicy,
   createAgentRunner,
 } from "./index.js";
 
@@ -927,5 +928,85 @@ describe("loop-react budget guard", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("compacts a growing transcript before the next model turn, and never below the head", async () => {
+    const bigTools = (): ToolRegistry => {
+      const tools = new ToolRegistry();
+      tools.register({
+        name: "read_forever",
+        description: "returns a lot of text",
+        inputSchema: { type: "object" },
+        execute: async () => "x".repeat(8_000),
+      });
+      return tools;
+    };
+    const turns = [
+      { type: "tool_calls", calls: [{ id: "c0", name: "read_forever", arguments: {} }] },
+      { type: "tool_calls", calls: [{ id: "c1", name: "read_forever", arguments: {} }] },
+      { type: "tool_calls", calls: [{ id: "c2", name: "read_forever", arguments: {} }] },
+      { type: "final", text: "done reading" },
+    ] as const;
+    const run = async (compaction: CompactionPolicy) => {
+      const recorded = recorder([...turns]);
+      const result = await createAgentRunner({
+        model: recorded.model,
+        tools: bigTools(),
+        limits: { maxSteps: 6, maxToolCalls: 6, timeoutMs: 5_000 },
+        compaction,
+      }).run("read everything");
+      return { result, seen: recorded.seen };
+    };
+    const compact = await run({ maxChars: 6_000, keepMessages: 4 });
+    const untouched = await run({ maxChars: 5_000_000, keepMessages: 4 });
+
+    expect(compact.result.status).toBe("completed");
+    expect(untouched.result.status).toBe("completed");
+    const last = compact.seen.at(-1) ?? [];
+    const untouchedLast = untouched.seen.at(-1) ?? [];
+    expect(last.some((message) => message.content.startsWith("compacted transcript: "))).toBe(true);
+    expect(untouchedLast.some((message) => message.content.startsWith("compacted transcript: "))).toBe(false);
+    // A compacted turn is strictly smaller than the same run left alone.
+    expect(last.reduce((sum, message) => sum + message.content.length, 0)).toBeLessThan(
+      untouchedLast.reduce((sum, message) => sum + message.content.length, 0),
+    );
+    // The head survives every turn: the model still knows what it was asked and how to answer.
+    for (const turn of compact.seen) {
+      expect(turn[0]?.role).toBe("system");
+      expect(turn[1]).toEqual({ role: "user", content: "read everything" });
+    }
+    // And no turn ever carries a tool result whose tool call is not in the same transcript.
+    for (const turn of compact.seen) {
+      const answered = new Set(turn.flatMap((m) => (m.toolCalls ?? []).map((c) => c.id)));
+      for (const message of turn) {
+        if (message.role !== "tool") continue;
+        expect(answered.has(message.toolCallId ?? "")).toBe(true);
+      }
+    }
+  });
+
+  it("keeps a transcript it cannot shorten instead of cutting a tool call away from its result", async () => {
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "loud",
+      description: "returns a lot of text",
+      inputSchema: { type: "object" },
+      execute: async () => "x".repeat(8_000),
+    });
+    const recorded = recorder([
+      { type: "tool_calls", calls: [{ id: "only", name: "loud", arguments: {} }] },
+      { type: "final", text: "still fine" },
+    ]);
+    const result = await createAgentRunner({
+      model: recorded.model,
+      tools,
+      limits: { maxSteps: 4, maxToolCalls: 4, timeoutMs: 5_000 },
+      // A cap of 10 characters and a tail large enough to hold everything: no safe cut exists.
+      compaction: { maxChars: 10, keepMessages: 100 },
+    }).run("be loud");
+    expect(result.status).toBe("completed");
+    const last = recorded.seen.at(-1) ?? [];
+    expect(last.some((message) => message.content.startsWith("compacted transcript: "))).toBe(false);
+    expect(last.filter((message) => message.role === "tool")).toHaveLength(1);
   });
 });

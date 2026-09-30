@@ -23,9 +23,18 @@ import type {
   ModelUsage,
 } from "../../../kernel/src/model.js";
 import type { ToolRegistry } from "../../../kernel/src/tools.js";
+import {
+  type CompactionPolicy,
+  type CompactionState,
+  compactMessages,
+  DEFAULT_COMPACTION,
+  EMPTY_COMPACTION_STATE,
+} from "./context.js";
 
 export type { BudgetStopReason } from "../../../kernel/src/agent.js";
 export type { ModelPrice, ModelUsage } from "../../../kernel/src/model.js";
+export type { CompactionPolicy, CompactionState } from "./context.js";
+export { DEFAULT_COMPACTION } from "./context.js";
 export type { AgentLimits, AgentResult, AgentRunner, AgentRunnerFactory, AgentStepRecord, BudgetPolicy };
 
 /**
@@ -171,6 +180,12 @@ export function createAgentRunner(options: {
    * priced and stops the run as `budget:cost-unpriced`; the map is never matched loosely.
    */
   modelIdentity?: string;
+  /**
+   * When a transcript is compacted, and how much of its recent tail is always kept. On by default:
+   * a bounded run should not keep re-sending a prompt that only ever grows. The pass refuses rather
+   * than cuts a transcript it cannot shorten or cannot cut safely, so this can never break a pair.
+   */
+  compaction?: CompactionPolicy;
 }): AgentRunner {
   return {
     async run(task, runOptions) {
@@ -215,6 +230,17 @@ export function createAgentRunner(options: {
               },
               { role: "user", content: task },
             ];
+      // One summary message stands in for the dropped span, and it is recognised on the next pass
+      // by exact text, so summaries fold into each other instead of stacking.
+      let compactionState: CompactionState = EMPTY_COMPACTION_STATE;
+      const compact = (): void => {
+        for (;;) {
+          const pass = compactMessages(messages, options.compaction ?? DEFAULT_COMPACTION, compactionState);
+          if (pass === undefined) return;
+          messages.splice(0, messages.length, ...pass.messages);
+          compactionState = pass.state;
+        }
+      };
       // ponytail: the step hook is awaited inline, so a hook that never settles holds the run open until
       // the caller gives up; race it against `stopped` if untrusted hooks ever land here.
       const notify = async (step: number): Promise<void> => {
@@ -289,6 +315,7 @@ export function createAgentRunner(options: {
           for (let step = 0; step < limits.maxSteps; step += 1) {
             if (controller.signal.aborted) return stop("Agent stopped: cancelled.", "agent cancelled");
             steps = step + 1;
+            compact();
             const raw: unknown = await Promise.race([
               options.model.complete(messages, options.tools.definitions(), controller.signal),
               stopped.then((value) => ({ stopped: value })),

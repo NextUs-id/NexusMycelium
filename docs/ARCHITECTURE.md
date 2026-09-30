@@ -546,6 +546,78 @@ bukan daftar rencana.
    (`plugins/loop-react/src/index.test.ts`) — sisi negatifnya ada di test yang sama: `-1`, `1.5`,
    `NaN`, `"1024"`, dan `null` menghasilkan run `budget:usage-unavailable` tanpa `usage`.
 
+## Status Task 4.2 — Context compactor otomatis
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 84 files`, `tsc --noEmit` bersih, **473 test di 33 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, `bench:smoke` `{"ok":true,…,"elapsedMs":46}`, `bench:20` 20/20 dengan
+`taskSetHash 645a15f7…` dan `reproducibilityHash 8135d0ff…`, `bench:accept` `accepted` dengan
+`violations: []`, dan `git diff --check` tanpa output. Angka benchmark itu **identik** dengan
+2.6/3.3/3.4/4.1b dan itu **bukan** achievement 4.2: transcript provider `mock` di benchmark selalu
+jauh di bawah cap 48.000 karakter, jadi tidak ada satu pun run benchmark yang pernah memadatkan
+transcript. Angka 473 = 461 (4.1b) + 10 test `context.test.ts` + 2 test integrasi.
+
+### Bentuk yang sudah ada di source
+
+- **`plugins/loop-react/src/context.ts`** — satu fungsi murni `compactMessages(messages, policy,
+  previous?)` plus `transcriptChars`, `DEFAULT_COMPACTION` (`{ maxChars: 48_000, keepMessages: 6 }`),
+  dan tipe `CompactionPolicy`, `CompactionState`, `CompactionResult`. Ia mengembalikan array baru
+  atau `undefined`, dan tidak pernah mutate input.
+- **Satu pesan `system` menggantikan span yang dibuang.** Head (system message di depan + user turn
+  pertama) dan `keepMessages` terakhir selalu utuh. Isi ringkasan hanya hitungan: jumlah pesan
+  terbuang, maksimal 8 nama tool (sisanya `(+N more)`), jumlah hasil tool gagal, panjang ≤ 400
+  karakter. Tidak ada isi pesan, argumen tool, path, atau teks model yang ikut.
+- **Tiga alasan menolak**, semuanya berarti transcript tidak berubah: di bawah cap, tidak ada batas
+  potong aman, atau ringkasan tidak lebih pendek dari span yang dibuang. Setiap pass yang berhasil
+  memperpendek transcript, jadi loop di `createAgentRunner` pasti berhenti.
+- **Pasangan dijaga dua arah** dan **ringkasan tidak menumpuk**: pass berikutnya mengenali ringkasan
+  lama dari kecocokan teks persis di posisi head lalu menghitung ulang lipatnya bersama span baru.
+- **Pemanggilan** ada di `plugins/loop-react/src/index.ts`: `compact()` dipanggil sebelum
+  `options.model.complete(...)` di setiap langkah, dengan policy dari `options.compaction` atau
+  `DEFAULT_COMPACTION`. Tidak ada perubahan kernel sama sekali.
+
+### Yang TIDAK ada di 4.2
+
+- **Tidak bisa dikonfigurasi.** `plugins["loop-react"].context` ditolak saat config resolve karena
+  `LoopPluginConfigSchema` masih `AgentOverlaySchema` yang `.strict()`. Menambahkannya = perubahan
+  kernel, dan 4.2 tidak mengizinkan kernel berubah. Yang tersedia hanya policy default dan opsi
+  `compaction` pada `createAgentRunner` untuk integrator yang memanggil factory langsung.
+- **Bukan peringkas LLM.** Tidak ada panggilan model tambahan, tidak ada biaya tambahan, tidak ada
+  key baru. Yang hilang dari pandangan model adalah isi verbatim pesan lama.
+- **Capnya karakter, bukan token.** Tidak ada tokenizer; metering budget tetap memakai angka
+  provider, dan compaction tidak mengubah `ModelUsage` maupun alasan stop mana pun.
+- **`AgentResult` tidak punya field compaction.** Ringkasan terlihat lewat `AgentStepRecord.messages`
+  yang dikirim ke `onStep`, jadi **pemanggil yang menyimpannya ke session store ikut menyimpannya**;
+  session yang di-resume mewarisi ringkasan dan pesan yang terbuang tidak bisa dimunculkan lagi.
+  Bentuk record session tidak berubah dan `schemaVersion` tetap 1.
+- **Satu hasil tool besar tidak pernah dipadatkan.** Yang dipadatkan adalah span, bukan isi satu
+  pesan, sehingga hasil tool 16.000 karakter tetap dikirim utuh.
+- **Tidak ada compaction lintas run dan tidak ada gate/canary apa pun.** 4.2 tidak menambah tahap
+  gate 7.1, dan tidak ada rollback apa pun di 7.x.
+
+### Kriteria falsifiable 4.2
+
+1. "leaves a transcript under the cap exactly as it was" — transcript di bawah cap dikembalikan
+   apa adanya (`plugins/loop-react/src/context.test.ts`).
+2. "keeps the head and the recent tail, and replaces the middle with one bounded summary".
+3. "never keeps a tool result whose tool call it dropped" dan "never drops a tool call whose result it
+   keeps" — dua arah, keduanya di transcript hasil compaction.
+4. "refuses to cut a transcript that has no safe boundary", "refuses a cut whose only boundary would
+   orphan a tool call", dan "refuses to compact when the summary would not shrink the transcript" —
+   tiga bentuk penolakan, masing-masing mengembalikan `undefined`.
+5. "folds an earlier summary into the new one instead of stacking summaries" — hanya satu ringkasan
+   yang tersisa setelah compaction kedua.
+6. "names a bounded number of tools and counts the failures it saw" — ringkasan tetap ≤ 400 karakter
+   meski 20 nama tool berbeda muncul.
+7. "compacts a growing transcript before the next model turn, and never below the head" — integrasi:
+   run yang sama dengan cap besar dan cap kecil dibandingkan, dan head utuh di **setiap** turn yang
+   dikirim ke model (`plugins/loop-react/src/index.test.ts`).
+8. "keeps a transcript it cannot shorten instead of cutting a tool call away from its result".
+
+**Dipalsukan**: mematikan pemanggilan `compact()` di loop menggagalkan test 7; menghapus koreksi
+batas aman yang menjaga tool call bersama hasil toolnya menggagalkan test 4 ("refuses a cut whose
+only boundary would orphan a tool call").
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.
