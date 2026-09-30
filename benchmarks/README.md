@@ -22,6 +22,26 @@ Tidak ada nested `pnpm` di dalam script. Setelah build berhasil, perintah yang s
 
 Run final `corepack pnpm bench:20` menghasilkan 20/20 task sukses, exit code 0, `elapsedMs` 845, 40 `steps`, dan 20 `toolCalls`; `successRate` 1. `usage.status` adalah `unavailable` dan `cost.source` adalah `mock-not-billed`. Nilai waktu adalah observasi satu run, bukan SLA. `taskSetHash` adalah `645a15f7f716ea1ef51465dca9e3fdf0f4772af410098afe6bbd049c07d644d2` dan `reproducibilityHash` adalah `8135d0ff1d29794842d3d0fa6bf8ac05c6c22787fa3e63869caa5c11212da1b3`.
 
+## Status Task 4.2d — Harness pengukuran compaction
+
+`bench:20` tidak pernah melewati cap compactor, jadi ia tidak bisa bicara apa pun soal compaction. Harness ini kebalikannya: satu bentuk transcript yang tetap, dijalankan dua kali — sekali dengan cap yang tidak terjangkau mana pun (baseline) dan sekali dengan cap yang menggigit — lalu melaporkan karakter yang benar-benar diserahkan ke provider.
+
+```bash
+corepack pnpm bench:compaction
+# tsc -p tsconfig.build.json && node dist/benchmarks/compaction.js
+```
+
+Bentuk skenarionya tetap: 8 putaran tool yang tiap hasil tool-nya 4.000 karakter, 9 pesan history tersimpan, `maxChars` 4.000, `keepMessages` 4. Run canonical menghasilkan:
+
+- `baseline.promptChars` 218.349 dan `compacted.promptChars` 1.806, jadi `charsSaved` 216.543 atau **99,17%**.
+- `retained.allRetained` `true`: kedua instruksi tersimpan dan kedua jawaban lama masih ada di transcript yang dikirim.
+- `compacted.orphanToolResults` `0` dan `compacted.compactedTurns` 9.
+- `usage.status` `unavailable`, `tokensMeasured` `false`.
+
+**Angka itu batas atas yang condong, bukan klaim umum.** Skenarionya memang dibuat condong: setiap tool mengembalikan 4.000 karakter sementara cap-nya 4.000, jadi hampir seluruh prompt adalah hasil tool yang memang dibuang. Pada run yang isi utamanya prosa atau instruksi, angka ini akan jauh lebih kecil, dan tier dua yang mengorbankan span tertua akan lebih sering dipakai. Angka ini juga **bukan** token: provider di harness ini stub offline yang tidak melapor usage, jadi `tokensMeasured` `false` dan `usage` `unavailable`. Jangan mengutip 99,17% sebagai "compaction hemat token".
+
+Gate harness menolak dengan exit 1 kalau `charsSaved` 0, ada instruksi/jawaban yang hilang, atau ada hasil tool yatim. Uji negatifnya memakai cap yang tidak terjangkau, jadi "nol penghematan" ditolak dan bukan dilaporkan sebagai sukses. Tidak ada mode report-only.
+
 ## Kontrak 20 task
 
 Task ID yang harus ada di `benchmarks/tasks.ts` adalah: `ts-constant`, `py-add`, `json-record`, `yaml-settings`, `css-grid`, `html-main`, `sql-filter`, `slug-regex`, `weekday-check`, `markdown-note`, `state-initial`, `csv-header`, `env-mode`, `xml-record`, `ignore-list`, `average`, `badge-component`, `health-handler`, `rust-answer`, dan `jsonl-event`.

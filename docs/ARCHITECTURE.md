@@ -720,6 +720,56 @@ isinya, jadi yang hilang justru instruksi dan jawaban yang tidak bisa dibangun u
    (`plugins/loop-react/src/index.test.ts`) — integrasi lewat `run --history`.
    **Dipalsukan**: mematikan tier satu (`keepByToolTurns`) menggagalkan test 1 dan test 5.
 
+## Status Task 4.2d — Harness pengukuran compaction
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 86 files`, `tsc --noEmit` bersih, **488 test di 34 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, `bench:20` 20/20 dengan `taskSetHash 645a15f7…` dan
+`reproducibilityHash 8135d0ff…` (tidak berubah — harness ini tidak menyentuh task set kanonik), dan
+`bench:compaction` exit 0.
+
+Task ini menutup batas yang tercatat di 4.2c: "compaction hemat token" belum punya angka sama sekali.
+
+### Bentuk yang sudah ada di source
+
+- **`benchmarks/compaction.ts`** dengan command `corepack pnpm bench:compaction` (build lalu
+  `node dist/benchmarks/compaction.js`, tanpa nested `pnpm`). Menjalankan bentuk transcript yang
+  tetap dua kali: baseline dengan cap 100.000.000 yang tidak terjangkau, dan run terukur dengan cap
+  4.000, `keepMessages` 4, 8 putaran tool, dan 9 pesan history tersimpan.
+- **Yang dilaporkan**: `baseline.promptChars` 218.349, `compacted.promptChars` 1.806,
+  `charsSaved` 216.543 (`charsSavedPct` 99,17), `compacted.compactedTurns` 9,
+  `compacted.orphanToolResults` 0, dan `retained.allRetained` `true` — kedua instruksi dan kedua
+  jawaban lama masih ada di transcript yang benar-benar dikirim.
+- **Yang tidak dilaporkan**: token. `tokensMeasured: false`, `tokensNote` menyatakan alasannya, dan
+  `usage.status` `unavailable` dengan ketiga penghitung `null`, karena stub offline tidak melapor
+  usage.
+- **Gate tanpa report-only**: exit 1 kalau `charsSaved` 0, ada instruksi/jawaban yang hilang, atau ada
+  hasil tool yatim.
+
+### Yang TIDAK ada di 4.2d
+
+- **Angka 99,17% adalah batas atas yang condong, bukan klaim umum.** Skenarionya disengaja
+  didominasi hasil tool (4.000 karakter per hasil tool, cap 4.000), jadi hampir seluruh prompt adalah
+  yang memang dibuang. Run yang isinya prosa atau instruksi akan menghasilkan angka jauh lebih kecil
+  dan lebih sering jatuh ke tier dua.
+- **Bukan token, bukan biaya, bukan tagihan.** `cost.source` tetap `mock-not-billed` dan nol di sini
+  tidak berarti gratis.
+- **Bukan benchmark model.** Stub-nya deterministik dan tidak memanggil LLM, jadi ini pengukuran
+  mekanisme compactor, bukan kemampuan model.
+- **Tidak ada suite live 9Router**; suite itu tetap ditunda seperti sejak 3.3.
+
+### Kriteria falsifiable 4.2d
+
+1. "reports the characters compaction saved and keeps the same numbers on a second run" — dua
+   run `runCompactionBenchmark()` menghasilkan report yang `toEqual` (`benchmarks/compaction.test.ts`).
+2. "keeps every seeded instruction and answer while dropping tool output" — `allRetained` `true` dan
+   `orphanToolResults` 0.
+3. "measures characters and refuses to report tokens" — `tokensMeasured` `false` dan report tidak
+   memuat satu pun penghitung token berupa angka.
+4. "fails the gate when nothing was saved, instead of reporting a success anyway" — cap yang tidak
+   terjangkau menghasilkan `charsSaved` 0 dan **exit 1**.
+5. "passes the gate on the canonical cap" — exit 0.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

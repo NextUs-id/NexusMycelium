@@ -306,7 +306,10 @@ tidak ada batas aman atau ringkasan tidak lebih pendek dari span yang dibuang.
   dari transcript lama hilang bagi model.
 - **Capnya karakter, bukan token.** Plugin tidak memiliki tokenizer dan tidak memperkirakan jumlah
   token. `maxChars` adalah proxy yang murah, dan metering budget tetap memakai angka provider
-  (`ModelUsage`), bukan hasil hitungan karakter.
+  (`ModelUsage`), bukan hasil hitungan karakter. Satu-satunya harness yang mengukur compactor
+  (`bench:compaction`, Task 4.2d) karena itu melaporkan **karakter**, dengan
+  `tokensMeasured: false` dan `usage.status: "unavailable"`; angkanya ada di
+  `benchmarks/README.md` ("Status Task 4.2d") beserta batasnya.
 - ~~**Belum bisa dikonfigurasi.**~~ **Closed 4.2b (2026-09-27).** `plugins["loop-react"].context`
   kini ada di `LoopPluginConfigSchema` (`kernel/src/config.ts`): blok `.strict()` dengan dua field
   opsional, `maxChars` (integer 1–10.000.000) dan `keepMessages` (integer 1–200). Keduanya opsional

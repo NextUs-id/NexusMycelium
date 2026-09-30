@@ -20,6 +20,7 @@
     "bench:20": "tsc -p tsconfig.build.json && node dist/benchmarks/run.js",
     "bench:accept": "tsc -p tsconfig.build.json && node dist/benchmarks/accept.js",
     "bench:smoke": "tsc -p tsconfig.build.json && node dist/benchmarks/smoke.js",
+    "bench:compaction": "tsc -p tsconfig.build.json && node dist/benchmarks/compaction.js",
     "test": "vitest run && node --test scripts/dashboard-server.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
