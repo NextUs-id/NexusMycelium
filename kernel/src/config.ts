@@ -275,8 +275,14 @@ const ContextConfigSchema = z
     keepMessages: z.number().int().min(1).max(200),
   })
   .strict();
+/**
+ * `parallelToolCalls` is optional and defaults to nothing, so a config written before it existed is
+ * unchanged. There is no top-level block for it on purpose: it is a loop behaviour rather than a
+ * runtime limit, and a caller asks for it in the plugin block instead of inheriting it.
+ */
 const LoopPluginConfigSchema = AgentOverlaySchema.extend({
   context: ContextConfigSchema.optional(),
+  parallelToolCalls: z.boolean().optional(),
 }).strict();
 const ToolsPluginConfigSchema = z
   .object({

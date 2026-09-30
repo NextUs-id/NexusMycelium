@@ -1296,4 +1296,61 @@ describe("loop-react budget guard", () => {
     expect(result.status).toBe("error");
     expect(result.error).toBe("broken fast");
   });
+
+  it("takes parallel tool calls from the loop-react config", async () => {
+    const runWith = async (loopConfig: Record<string, unknown>) => {
+      const root = await mkdtemp(join(tmpdir(), "nexus-parallel-config-"));
+      const registry = new Registry(
+        silent,
+        (name) => (name === "tools-basic" ? { root } : name === "loop-react" ? loopConfig : {}),
+        new PermissionGate({ "fs.read": "allow", "fs.write": "allow", shell: "deny" }),
+      );
+      registry.register(toolsBasic);
+      registry.register(loopReact);
+      const overlap = { peak: 0, live: 0 };
+      try {
+        await registry.load("loop-react");
+        const factory = registry.services.get<AgentRunnerFactory>("agent:runner-factory");
+        // The runner uses the registry the plugin loaded, so the probe has to live there too.
+        const tools = registry.services.get<ToolRegistry>("tool:core");
+        tools.register({
+          name: "overlap_probe",
+          description: "records how many of these run at once",
+          inputSchema: { type: "object" },
+          execute: async () => {
+            overlap.live += 1;
+            overlap.peak = Math.max(overlap.peak, overlap.live);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            overlap.live -= 1;
+            return "done";
+          },
+        });
+        const model: ModelProvider = {
+          async complete(): Promise<ModelResult> {
+            if (overlap.peak > 0 && overlap.live === 0) {
+              return { type: "final", text: "probed" };
+            }
+            return {
+              type: "tool_calls",
+              calls: [
+                { id: "a", name: "overlap_probe", arguments: {} },
+                { id: "b", name: "overlap_probe", arguments: {} },
+              ],
+            };
+          },
+        };
+        const result = await factory(model, "mock").run("probe", { budget: undefined });
+        return { result, overlap };
+      } finally {
+        await registry.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    };
+    const on = await runWith({ maxSteps: 4, maxToolCalls: 4, timeoutMs: 2_000, parallelToolCalls: true });
+    const off = await runWith({ maxSteps: 4, maxToolCalls: 4, timeoutMs: 2_000 });
+    expect(on.result.status).toBe("completed");
+    expect(off.result.status).toBe("completed");
+    expect(on.overlap.peak).toBe(2);
+    expect(off.overlap.peak).toBe(1);
+  });
 });

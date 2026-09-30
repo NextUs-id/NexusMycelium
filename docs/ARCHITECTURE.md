@@ -822,6 +822,51 @@ Angka 493 = 488 (4.2d) + 5 test 4.3.
 leaves the tool calls of a budget-stopped turn unpaired"; membuat `Promise.all` tidak pernah dipakai
 menggagalkan test 2.
 
+## Status Task 4.3b — Tool call paralel dari config
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 86 files`, `tsc --noEmit` bersih, **497 test di 34 file** + 2 `node --test`) dan
+`git diff --check` tanpa output. Angka suite = 493 (4.3) + 3 test config kernel + 1 test closure.
+`bench:20`/`bench:accept` tidak dijalankan ulang dan tidak boleh dikutip sebagai achievement 4.3b,
+dengan alasan yang sama seperti 4.3: `model-mock` tidak pernah menghasilkan satu giliran dengan dua
+panggilan tool.
+
+Task ini menutup batas yang tercatat di 4.3: tidak ada config key. Izin kernel datang eksplisit dari
+coordinator untuk task lanjutan 4.2b, dan dipakai di sini sempit.
+
+### Bentuk yang sudah ada di source
+
+- **`plugins["loop-react"].parallelToolCalls`** (`z.boolean().optional()`) di `LoopPluginConfigSchema`
+  (`kernel/src/config.ts`). Tidak ada blok top-level dan tidak ada default di
+  `config/default.yaml`, jadi config yang tidak menyebutnya tidak mendapat key baru sama sekali.
+- **Plugin menyalakannya hanya untuk literal `true`** (`config.parallelToolCalls === true` di
+  `setup()`), lalu meneruskannya ke `createAgentRunner`. Nilai apa pun yang bukan `true` — termasuk
+  yang lolos dari pemanggil programmatic — membuat loop tetap serial.
+- **`user/config.example.yaml`** memuat kunci `loop-react.context` dan
+  `loop-react.parallelToolCalls` sebagai contoh berkomentar, jadi keduanya bisa ditemukan tanpa
+  membaca dokumen.
+
+### Yang TIDAK ada di 4.3b
+
+- **Default runtime tetap serial.** Menyalahkannya jadi default on butuh bukti bahwa tool dengan
+  efek samping tetap aman, dan bukti itu belum ada.
+- **Tidak ada pengukuran kecepatan** serial vs paralel, jadi "lebih cepat" tetap tidak terbukti.
+- **Tidak ada transaksi, lock, atau rollback tool**, dan semua panggilan satu giliran tetap mulai
+  bersamaan ketika mode ini dinyalakan.
+- **Tidak ada knob lain** yang ikut masuk: tidak ada `maxConcurrency`, tidak ada daftar tool yang
+  boleh paralel, tidak ada per-tool override.
+
+### Kriteria falsifiable 4.3b
+
+1. "reads the flag off loop-react and leaves a config written before it alone" dan "gains no key when
+   the config never mentions it" (`kernel/src/config.test.ts`).
+2. "refuses a value that is not a boolean, and a misspelled key" — `yes please`, `1`,
+   `parallelToolCall`, dan `paralelToolCalls` semuanya ditolak saat resolve.
+3. "takes parallel tool calls from the loop-react config"
+   (`plugins/loop-react/src/index.test.ts`) — dua run lewat `Registry` dengan tool probe yang
+   sama: config `parallelToolCalls: true` memberi `overlap.peak` 2, config tanpa kunci memberi 1.
+   **Dipalsukan**: membuat `setup()` mengabaikan config menggagalkan test ini.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

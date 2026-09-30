@@ -375,15 +375,23 @@ dan `schemaVersion` session **tidak berubah** pada task ini.
   giliran, semua hasil giliran itu dibuang dan diganti alasan stop, persis seperti sebelumnya —
   bukan setengah dilaporkan. `AgentResult.toolCalls` pada hasil itu dihitung ulang dari jumlah yang
   benar-benar berjalan, karena snapshot stop membekukannya sebelum giliran dimulai.
-- **Tidak ada config key.** `plugins["loop-react"]` tidak punya kunci untuk ini, jadi yang tersedia
-  hanya option factory; menyalakannya lewat config butuh perubahan kernel dan task sendiri.
+- ~~**Tidak ada config key.**~~ **Closed 4.3b (2026-09-27).** `plugins["loop-react"].parallelToolCalls`
+  kini ada di `LoopPluginConfigSchema` (`kernel/src/config.ts`) sebagai boolean opsional. Tidak ada
+  blok top-level untuknya — ini perilaku loop, bukan limit runtime — dan tidak ada default di
+  `config/default.yaml`, jadi config yang tidak menyebutnya persis seperti sebelumnya. Plugin menyalakannya
+  **hanya** untuk literal `true`; nilai lain apa pun membuat loop tetap serial. Nilai non-boolean dan
+  key typo ditolak saat config resolve.
 - **Tidak ada pengukuran.** Tidak ada harness yang mengukur waktu hemat mode paralel, jadi jangan
   menulis "tool call paralel lebih cepat" sebagai hasil yang sudah dibuktikan.
 
 ### Aturan untuk task berikutnya
 
-- Kalau mode paralel dibuat on-by-default atau dipindah ke config, sertakan test yang membuktikannya
-  aman untuk tool dengan efek samping, bukan hanya test yang mengukur overlap.
+- Mode paralel sekarang bisa dinyalakan lewat config, tapi **default runtime masih serial** dan tidak
+  ada harness yang mengukur waktu hemat, jadi jangan menulis "tool call paralel lebih cepat". Mengubah
+  default runtime ke on perlu test yang menunjukkan tool dengan efek samping tetap aman, bukan hanya
+  test overlap.
+- `user/config.example.yaml` memuat kedua kunci loop sebagai contoh berkomentar; menambah kunci baru di
+  sana harus tetap berpasangan dengan schema kernel dan test-nya.
 - Kalau suatu task butuh tool paralel yang benar-benar terisolasi, itu bukan fitur loop — itu
   mekanisme tool (namespace, lock, atau tool runner sendiri) dan butuh task tersendiri.
 

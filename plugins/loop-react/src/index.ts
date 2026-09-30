@@ -521,8 +521,17 @@ export default definePlugin({
     // The factory is handed the resolved model identity the caller's price map is keyed by, so an
     // armed cost ceiling is priceable instead of refusing every run as unpriced.
     const compaction: CompactionPolicy = { ...DEFAULT_COMPACTION, ...compactionConfig(config.context) };
+    // Only a literal `true` turns it on; anything else leaves the serial loop alone.
+    const parallelToolCalls = config.parallelToolCalls === true;
     const factory: AgentRunnerFactory = (model, modelName) =>
-      createAgentRunner({ model, tools, limits, modelIdentity: modelName, compaction });
+      createAgentRunner({
+        model,
+        tools,
+        limits,
+        modelIdentity: modelName,
+        compaction,
+        parallelToolCalls,
+      });
     services.register("agent:runner-factory", factory, "loop-react");
   },
 });

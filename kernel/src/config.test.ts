@@ -859,3 +859,58 @@ describe("kernel compaction config", () => {
     }
   });
 });
+
+describe("kernel parallel tool call config", () => {
+  it("reads the flag off loop-react and leaves a config written before it alone", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(
+        join(root, "user.yaml"),
+        "plugins:\n  loop-react:\n    parallelToolCalls: true\n",
+        "utf8",
+      );
+      const config = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      expect(pluginConfig(config, "loop-react").parallelToolCalls).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gains no key when the config never mentions it", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(join(root, "user.yaml"), "plugins:\n  loop-react:\n    maxSteps: 5\n", "utf8");
+      const config = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      expect(Object.hasOwn(pluginConfig(config, "loop-react"), "parallelToolCalls")).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a value that is not a boolean, and a misspelled key", async () => {
+    const root = await configuredRoot();
+    const cases = [
+      "parallelToolCalls: yes please",
+      "parallelToolCalls: 1",
+      "parallelToolCall: true",
+      "paralelToolCalls: true",
+    ];
+    try {
+      for (const body of cases) {
+        await writeFile(join(root, "user.yaml"), `plugins:\n  loop-react:\n    ${body}\n`, "utf8");
+        await expect(
+          resolveConfig(root, { defaultsPath: "config/default.yaml", userPath: "user.yaml" }),
+          body,
+        ).rejects.toThrow(/parallelToolCall|paralelToolCalls|invalid configuration/);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

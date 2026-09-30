@@ -56,3 +56,11 @@ dashboard:
 plugins:
   example-hello:
     who: "nexus"
+  # loop-react:
+  #   # Compactor: cap karakter dan berapa pesan terakhir yang selalu utuh. Kosong berarti default plugin.
+  #   context:
+  #     maxChars: 48000
+  #     keepMessages: 6
+  #   # Panggilan tool dalam satu giliran berjalan bersamaan. Semua panggilan mulai bersamaan, jadi tool
+  #   # dengan efek samping bisa berjalan setelah run di-abort. Default-nya serial.
+  #   parallelToolCalls: true
