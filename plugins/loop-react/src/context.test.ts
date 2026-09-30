@@ -83,8 +83,14 @@ describe("compactMessages", () => {
   });
 
   it("refuses to cut a transcript that has no safe boundary", () => {
-    // One unbreakable run of pairs and no room to keep the recent tail without cutting inside it.
-    const messages: ModelMessage[] = [SYSTEM, TASK, ...turn(0, 20_000), ...turn(1, 20_000)];
+    // The tool-turn pass cannot pay for a 20k final answer, and the span rule has no room because the
+    // whole tail fits inside `keepMessages`.
+    const messages: ModelMessage[] = [
+      SYSTEM,
+      TASK,
+      { role: "assistant", content: "z".repeat(20_000) },
+      ...turn(0, 400),
+    ];
     expect(compactMessages(messages, { maxChars: 100, keepMessages: 4 })).toBeUndefined();
   });
 
@@ -154,5 +160,89 @@ describe("compactMessages", () => {
     expect(DEFAULT_COMPACTION.maxChars).toBeGreaterThan(0);
     expect(DEFAULT_COMPACTION.keepMessages).toBeGreaterThan(0);
     expect(compactMessages(transcript(2, 10), DEFAULT_COMPACTION)).toBeUndefined();
+  });
+});
+
+describe("compactMessages tool turns first", () => {
+  it("drops whole tool turns before it drops anything else", () => {
+    const messages: ModelMessage[] = [SYSTEM, TASK];
+    for (let index = 0; index < 5; index += 1) {
+      messages.push(
+        {
+          role: "assistant",
+          content: "thinking about it",
+          toolCalls: [{ id: `c-${index}`, name: `tool-${index}`, arguments: {} }],
+        },
+        { role: "tool", content: `{"ok":true,"output":"${"x".repeat(3_000)}"}`, toolCallId: `c-${index}` },
+      );
+    }
+    const result = compactMessages(messages, { maxChars: 8_000, keepMessages: 4 });
+    if (result === undefined) throw new Error("expected a compaction");
+    // The newest turns survive; the oldest whole turns are gone behind one summary.
+    expect(result.messages[0]).toEqual(SYSTEM);
+    expect(result.messages[1]).toEqual(TASK);
+    expect(result.messages[2]?.content).toMatch(/^compacted transcript: /);
+    expect(transcriptChars(result.messages)).toBeLessThanOrEqual(8_000);
+    expect(result.savedChars).toBeGreaterThan(0);
+  });
+
+  it("keeps every user instruction and every final answer, however small the tail budget", () => {
+    const instructions = ["first instruction", "second instruction"];
+    const answers = ["first final answer", "second final answer"];
+    const messages: ModelMessage[] = [SYSTEM];
+    let turn = 0;
+    for (const [index, instruction] of instructions.entries()) {
+      messages.push({ role: "user", content: instruction });
+      messages.push({
+        role: "assistant",
+        content: "a".repeat(500),
+        toolCalls: [{ id: `c-${turn}`, name: `tool-${turn}`, arguments: {} }],
+      });
+      messages.push({
+        role: "tool",
+        content: `{"ok":true,"output":"${"x".repeat(3_000)}"}`,
+        toolCallId: `c-${turn}`,
+      });
+      turn += 1;
+      messages.push({ role: "assistant", content: answers[index] ?? "" });
+    }
+    const result = compactMessages(messages, { maxChars: 4_000, keepMessages: 1 });
+    if (result === undefined) throw new Error("expected a compaction");
+    const kept = result.messages.map((message) => message.content);
+    for (const instruction of instructions) expect(kept).toContain(instruction);
+    for (const answer of answers) expect(kept).toContain(answer);
+    expect(transcriptChars(result.messages)).toBeLessThanOrEqual(4_000);
+  });
+
+  it("never splits a tool turn: a dropped call takes its results with it", () => {
+    const messages = transcript(6);
+    const result = compactMessages(messages, { maxChars: 12_000, keepMessages: 4 });
+    if (result === undefined) throw new Error("expected a compaction");
+    const answers = new Set(result.messages.flatMap((m) => (m.toolCalls ?? []).map((call) => call.id)));
+    for (const message of result.messages) {
+      for (const call of message.toolCalls ?? []) expect(answers.has(call.id)).toBe(true);
+      if (message.role === "tool") expect(answers.has(message.toolCallId ?? "")).toBe(true);
+    }
+  });
+
+  it("falls back to the span rule when tool turns alone cannot reach the cap", () => {
+    // The bulk is an old final answer, not a tool result, so the tool-turn pass cannot pay for it and
+    // the span rule has to take over.
+    const messages: ModelMessage[] = [
+      SYSTEM,
+      TASK,
+      { role: "assistant", content: "z".repeat(20_000) },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "c", name: "tool-c", arguments: {} }],
+      },
+      { role: "tool", content: `{"ok":true,"output":"${"x".repeat(400)}"}`, toolCallId: "c" },
+    ];
+    const result = compactMessages(messages, { maxChars: 4_000, keepMessages: 2 });
+    if (result === undefined) throw new Error("expected the fallback to compact");
+    expect(result.messages.some((message) => message.content.includes("zzzz"))).toBe(false);
+    // The recent tool turn is still there, whole.
+    expect(result.messages.filter((message) => message.role === "tool")).toHaveLength(1);
   });
 });

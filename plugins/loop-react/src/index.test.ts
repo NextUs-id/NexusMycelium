@@ -1079,4 +1079,42 @@ describe("loop-react budget guard", () => {
     expect(untouchedLast.some((message) => message.content.startsWith("compacted transcript: "))).toBe(false);
     expect(configuredLast[0]?.role).toBe("system");
   });
+
+  it("keeps the instructions and final answers of a stored transcript when it compacts", async () => {
+    const stored: ModelMessage[] = [
+      { role: "system", content: "Use the available tools when needed, then return a final answer." },
+      { role: "user", content: "earlier instruction" },
+      {
+        role: "assistant",
+        content: "working",
+        toolCalls: [{ id: "old-1", name: "echo", arguments: {} }],
+      },
+      { role: "tool", content: `{"ok":true,"output":"${"z".repeat(4_000)}"}`, toolCallId: "old-1" },
+      { role: "assistant", content: "earlier final answer" },
+      { role: "user", content: "earlier follow-up" },
+      {
+        role: "assistant",
+        content: "working",
+        toolCalls: [{ id: "old-2", name: "echo", arguments: {} }],
+      },
+      { role: "tool", content: `{"ok":true,"output":"${"z".repeat(4_000)}"}`, toolCallId: "old-2" },
+    ];
+    const recorded = recorder([{ type: "final", text: "done" }]);
+    const result = await createAgentRunner({
+      model: recorded.model,
+      tools: echoTools(),
+      limits: { maxSteps: 2, maxToolCalls: 2, timeoutMs: 5_000 },
+      compaction: { maxChars: 3_000, keepMessages: 1 },
+    }).run("new task", { history: stored });
+    expect(result.status).toBe("completed");
+    const sent = recorded.seen[0] ?? [];
+    const contents = sent.map((message) => message.content);
+    // Tool output is what pays for the cap; the instructions and the answers are not for sale.
+    expect(contents).toContain("earlier instruction");
+    expect(contents).toContain("earlier final answer");
+    expect(contents).toContain("earlier follow-up");
+    expect(contents).toContain("new task");
+    expect(contents.some((content) => content.startsWith("compacted transcript: "))).toBe(true);
+    expect(contents.some((content) => content.includes("zzzz"))).toBe(false);
+  });
 });

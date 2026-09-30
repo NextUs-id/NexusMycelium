@@ -673,6 +673,53 @@ Izin kernel untuk task ini datang eksplisit dari coordinator; 4.2 sendiri sengaj
    `context.maxChars: 600` dan satu tanpa blok; hanya yang pertama yang memadatkan transcript.
    **Dipalsukan**: membuat `setup()` mengabaikan `config.context` menggagalkan test ini.
 
+## Status Task 4.2c — Compactor mengorbankan putaran tool dulu
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 84 files`, `tsc --noEmit` bersih, **483 test di 33 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, `bench:smoke` `{"ok":true,…,"elapsedMs":50}`, `bench:20` 20/20 dengan
+`taskSetHash 645a15f7…` dan `reproducibilityHash 8135d0ff…`, `bench:accept` `accepted` dengan
+`violations: []` — **identik** dengan 4.2/4.2b dan itu bukan achievement 4.2c karena transcript
+provider `mock` di benchmark tidak pernah melewati cap. 483 = 478 (4.2b) + 5 test.
+
+Task ini menjawab keluhan yang tercatat setelah 4.2b: compactor memotong span tertua tanpa melihat
+isinya, jadi yang hilang justru instruksi dan jawaban yang tidak bisa dibangun ulang model.
+
+### Bentuk yang sudah ada di source
+
+- **`compactMessages()` punya dua tingkat.** `keepByToolTurns()` (tier satu) melewati
+  putaran tool satu per satu dan hanya mengorbankan yang utuh, selama transcript masih di atas cap;
+  `keepBySpan()` (tier dua) adalah aturan lama dan hanya jalan kalau tier satu tidak cukup. Satu
+  builder yang sama menulis ringkasan, menghitung state, dan menolak kalau ringkasan tidak lebih
+  pendek.
+- **Properti yang dijaga tier satu**: tidak ada `user` turn dan tidak ada `assistant` tanpa
+  `toolCalls` yang terbuang, dan tidak ada putaran tool yang terbelah dua —-hasil tool yang
+  bertahan selalu punya tool call-nya di transcript yang sama.
+
+### Yang TIDAK ada di 4.2c
+
+- **Tier dua masih bisa Throw away instruksi lama.** Kalau yang berat adalah prosa dan bukan output
+  tool, span tertua termasuk instruksi ikut terbuang. Tier satu dan tier dua berbagi
+  `keepMessages` dan `maxChars`; tidak ada knob per tingkat.
+- **Belum ada angka penghematan.** Tidak ada harness yang mengukur karakter yang benar-benar
+  dikirim ke provider, dan `usage` tetap `unavailable` karena provider offline tidak melapor.
+  Klaim "compaction hemat token" **masuk kategori tidak terbukti** sampai ada harness-nya (4.2d).
+- **Tidak ada ringkasan semantik**: yang dibuang tetap hilang isinya, hanya hitungannya yang
+  tersisa.
+
+### Kriteria falsifiable 4.2c
+
+1. "keeps every user instruction and every final answer, however small the tail budget"
+   (`plugins/loop-react/src/context.test.ts`) — `keepMessages: 1` dan cap kecil, semua `user` turn
+   dan semua jawaban final masih ada.
+2. "drops whole tool turns before it drops anything else".
+3. "never splits a tool turn: a dropped call takes its results with it".
+4. "falls back to the span rule when tool turns alone cannot reach the cap" — 20k jawaban final
+   lama di luar jangkauan tier satu, dan tier dua tetap mengambilnya.
+5. "keeps the instructions and final answers of a stored transcript when it compacts"
+   (`plugins/loop-react/src/index.test.ts`) — integrasi lewat `run --history`.
+   **Dipalsukan**: mematikan tier satu (`keepByToolTurns`) menggagalkan test 1 dan test 5.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

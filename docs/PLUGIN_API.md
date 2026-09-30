@@ -281,6 +281,24 @@ capability, service, tool, atau key config baru, dan `schemaVersion` session tet
   sementara tool call-nya terbuang, dan tidak ada tool call terbuang sementara hasil tool-nya
   dipertahankan. Head yang memuat ringkasan tidak pernah dihitung sebagai transcript asli.
 
+### Dua tingkat pembuangan (Task 4.2c)
+
+Compactor melewati transcript dalam dua tingkat, dan tingkat pertama yang berjalan di praktik:
+
+- **Tier satu** hanya mengorbankan **putaran tool utuh** — pasangan `assistant` yang punya
+  `toolCalls` beserta semua hasil `tool`-nya — dan hanya selama transcript masih di atas cap.
+  **Tidak ada `user` turn dan tidak ada `assistant` tanpa `toolCalls` (jawaban final) yang pernah
+  dibuang di tingkat ini**, berapa pun kecilnya `keepMessages`. Karena itu sifat amnesia yang
+ loehat hilang di kasus umum, dan sebagian besar karakter yang hilang tetap hilang karena hasil
+  tool, bukan karena instruksi.
+- **Tier dua** (aturan span lama) hanya dipakai kalau hasil tool saja tidak bisa mencapai cap —
+  misalnya karena yang berat adalah prosa, bukan output tool. Di situ span tertua boleh ikut
+  terbuang, termasuk instruksi lama, dan itu batas yang jujur: kalau yang berat adalah teks, ada
+  yang harus hilang.
+
+Keduanya menemukan pasangan utuh, dan keduanya menolak (transcript tidak berubah) kalau
+tidak ada batas aman atau ringkasan tidak lebih pendek dari span yang dibuang.
+
 ### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
 
 - **Bukan peringkas LLM.** Tidak ada panggilan model tambahan, tidak ada biaya tambahan, dan tidak

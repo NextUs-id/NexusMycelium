@@ -91,18 +91,56 @@ function summaryText(state: Omit<CompactionState, "text">): string {
  * the span it replaces. A caller that loops on this therefore shrinks the transcript strictly, or
  * stops.
  */
-export function compactMessages(
+/** Length of one tool turn at `index`: an assistant tool call plus every result that answers it. */
+function toolTurn(messages: readonly ModelMessage[], index: number): number {
+  const first = messages[index];
+  if (first?.role !== "assistant" || (first.toolCalls?.length ?? 0) === 0) return 0;
+  let end = index + 1;
+  while (end < messages.length && messages[end]?.role === "tool") end += 1;
+  return end - index;
+}
+
+/**
+ * Which messages survive, `keep[index] === false` meaning "drop this one". Tier one never drops a
+ * user turn, a final answer, or half a tool turn: it spends whole tool turns only, and only while
+ * there is still a gap to close. It returns `undefined` when tool turns cannot reach the cap, which
+ * is the caller's cue to try the span rule instead.
+ */
+function keepByToolTurns(
   messages: readonly ModelMessage[],
-  policy: CompactionPolicy,
-  previous: CompactionState = EMPTY_COMPACTION_STATE,
-): CompactionResult | undefined {
-  const total = transcriptChars(messages);
-  if (total <= policy.maxChars) return undefined;
-  const dropStart = headEnd(messages);
-  const summary = messages[dropStart];
-  const hasSummary = previous.text !== "" && summary?.role === "system" && summary.content === previous.text;
-  // The summary sits at the head of the droppable span, so a later pass folds it into the new one.
-  let keepFrom = Math.max(dropStart, messages.length - policy.keepMessages);
+  start: number,
+  maxChars: number,
+): boolean[] | undefined {
+  const keep = messages.map(() => true);
+  let keptChars = transcriptChars(messages);
+  let dropped = false;
+  let index = start;
+  while (index < messages.length) {
+    const length = toolTurn(messages, index);
+    if (length === 0) {
+      index += 1;
+      continue;
+    }
+    const groupChars = transcriptChars(messages.slice(index, index + length));
+    // While the transcript is still over the cap, this whole turn is worth spending.
+    if (keptChars > maxChars) {
+      for (let inner = index; inner < index + length; inner += 1) keep[inner] = false;
+      keptChars -= groupChars;
+      dropped = true;
+    }
+    index += length;
+  }
+  if (!dropped || keptChars > maxChars) return undefined;
+  return keep;
+}
+
+/** The span rule: keep the head, the recent tail, and cut wherever that leaves no orphan. */
+function keepBySpan(
+  messages: readonly ModelMessage[],
+  dropStart: number,
+  keepMessages: number,
+): boolean[] | undefined {
+  let keepFrom = Math.max(dropStart, messages.length - keepMessages);
   for (let guard = 0; guard <= messages.length && keepFrom > dropStart; guard += 1) {
     let moved = false;
     while (keepFrom < messages.length && messages[keepFrom]?.role === "tool") {
@@ -116,36 +154,72 @@ export function compactMessages(
     if (!moved) break;
   }
   if (keepFrom <= dropStart) return undefined;
+  const keep = messages.map(() => true);
+  for (let index = dropStart; index < keepFrom; index += 1) keep[index] = false;
+  return keep;
+}
+
+/**
+ * One compaction pass, in two tiers: spend whole tool turns first, and only fall back to cutting a
+ * span when tool output cannot pay for the cap on its own.
+ *
+ * The tiers differ in what they may lose, and the first tier is the one that runs in practice. A
+ * user instruction or a final answer is the part of a transcript a model cannot rebuild, so tier one
+ * never drops either, however small `keepMessages` is. Tier two can, and that is the honest limit:
+ * when the bulk of a transcript is prose rather than tool output, something has to go, and what
+ * goes is the oldest span.
+ */
+export function compactMessages(
+  messages: readonly ModelMessage[],
+  policy: CompactionPolicy,
+  previous: CompactionState = EMPTY_COMPACTION_STATE,
+): CompactionResult | undefined {
+  const total = transcriptChars(messages);
+  if (total <= policy.maxChars) return undefined;
+  const dropStart = headEnd(messages);
+  if (dropStart >= messages.length) return undefined;
+  const summary = messages[dropStart];
+  const hasSummary = previous.text !== "" && summary?.role === "system" && summary.content === previous.text;
+  // A carried summary is replaced, never kept next to a new one, so summaries cannot stack.
+  const start = hasSummary ? dropStart + 1 : dropStart;
+  const keep =
+    keepByToolTurns(messages, start, policy.maxChars) ?? keepBySpan(messages, dropStart, policy.keepMessages);
+  if (keep === undefined) return undefined;
+  if (hasSummary && keep[dropStart] !== false) keep[dropStart] = false;
 
   const tools = new Set<string>(hasSummary ? previous.tools : []);
   let droppedMessages = hasSummary ? previous.droppedMessages : 0;
   let toolErrors = hasSummary ? previous.toolErrors : 0;
-  for (let index = dropStart; index < keepFrom; index += 1) {
+  let removed = 0;
+  for (let index = dropStart; index < messages.length; index += 1) {
+    if (keep[index] !== false) continue;
     const message = messages[index];
     if (message === undefined) continue;
+    // The carried summary is already counted in `previous`; it is replaced, not counted twice.
     if (hasSummary && index === dropStart) continue;
+    removed += 1;
     droppedMessages += 1;
     for (const call of message.toolCalls ?? []) tools.add(call.name);
     if (message.role === "tool" && toolFailed(message.content)) toolErrors += 1;
   }
+  if (removed === 0) return undefined;
   const state: CompactionState = { text: "", droppedMessages, tools: [...tools].sort(), toolErrors };
   const text = summaryText(state);
-  if (
-    text.length >=
-    total - transcriptChars(messages.slice(0, dropStart)) - transcriptChars(messages.slice(keepFrom))
-  ) {
-    // A summary that costs as much as it saves is a loss: refuse instead of paying it every turn.
-    return undefined;
+  const compacted: ModelMessage[] = [];
+  let written = false;
+  for (let index = 0; index < messages.length; index += 1) {
+    if (keep[index] === false) {
+      if (!written) {
+        compacted.push({ role: "system", content: text });
+        written = true;
+      }
+      continue;
+    }
+    const message = messages[index];
+    if (message !== undefined) compacted.push(message);
   }
-  const compacted: ModelMessage[] = [
-    ...messages.slice(0, dropStart),
-    { role: "system", content: text },
-    ...messages.slice(keepFrom),
-  ];
-  return {
-    messages: compacted,
-    state: { ...state, text },
-    removed: keepFrom - dropStart,
-    savedChars: total - transcriptChars(compacted),
-  };
+  const savedChars = total - transcriptChars(compacted);
+  // A summary that costs as much as it saves is a loss: refuse instead of paying it every turn.
+  if (savedChars <= 0) return undefined;
+  return { messages: compacted, state: { ...state, text }, removed, savedChars };
 }
