@@ -443,6 +443,28 @@ function numberConfig(value: unknown, fallback: number): number {
   return typeof value === "number" ? value : fallback;
 }
 
+/** The same bounds the kernel schema enforces, checked again at the trust boundary. */
+function compactionNumber(value: unknown, ceiling: number): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > ceiling) {
+    return undefined;
+  }
+  return value;
+}
+
+/**
+ * Config overrides the loop's own defaults; anything the kernel did not already reject and this
+ * cannot honour is ignored rather than clamped, so a bad value never becomes a different value.
+ */
+function compactionConfig(value: unknown): Partial<CompactionPolicy> {
+  if (!isRecord(value)) return {};
+  const maxChars = compactionNumber(value.maxChars, 10_000_000);
+  const keepMessages = compactionNumber(value.keepMessages, 200);
+  return {
+    ...(maxChars === undefined ? {} : { maxChars }),
+    ...(keepMessages === undefined ? {} : { keepMessages }),
+  };
+}
+
 export default definePlugin({
   manifest: {
     name: "loop-react",
@@ -462,8 +484,9 @@ export default definePlugin({
     };
     // The factory is handed the resolved model identity the caller's price map is keyed by, so an
     // armed cost ceiling is priceable instead of refusing every run as unpriced.
+    const compaction: CompactionPolicy = { ...DEFAULT_COMPACTION, ...compactionConfig(config.context) };
     const factory: AgentRunnerFactory = (model, modelName) =>
-      createAgentRunner({ model, tools, limits, modelIdentity: modelName });
+      createAgentRunner({ model, tools, limits, modelIdentity: modelName, compaction });
     services.register("agent:runner-factory", factory, "loop-react");
   },
 });

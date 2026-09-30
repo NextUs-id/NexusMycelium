@@ -62,7 +62,7 @@ describe("compactMessages", () => {
       expect(calls.has(message.toolCallId ?? "")).toBe(true);
     }
     // The cut never lands between a tool call and its result: the first kept tail message is paired.
-    const tailStart = result.messages.findIndex((message, index) => index > 2);
+    const tailStart = 3;
     if (result.messages[tailStart]?.role === "tool") {
       expect(result.messages[tailStart - 1]?.toolCalls?.length).toBeGreaterThan(0);
     }

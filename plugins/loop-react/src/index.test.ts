@@ -1009,4 +1009,74 @@ describe("loop-react budget guard", () => {
     expect(last.some((message) => message.content.startsWith("compacted transcript: "))).toBe(false);
     expect(last.filter((message) => message.role === "tool")).toHaveLength(1);
   });
+
+  it("takes the compaction cap from config all the way into the run", async () => {
+    const payload = "y".repeat(3_000);
+    const runWith = async (compaction: string) => {
+      const root = await mkdtemp(join(tmpdir(), "nexus-compact-config-"));
+      try {
+        await mkdir(join(root, "config"), { recursive: true });
+        await mkdir(join(root, "user"), { recursive: true });
+        await writeFile(
+          join(root, "config", "default.yaml"),
+          "model:\n  provider: mock\n  model: mock\n",
+          "utf8",
+        );
+        await writeFile(
+          join(root, "user", "config.yaml"),
+          `permissions:\n  fs.write: allow\nplugins:\n  loop-react:\n${compaction}`,
+          "utf8",
+        );
+        const records: ModelMessage[][] = [];
+        const runtime = await createRuntime({ root, modelProvider: "mock", askPermission: () => true });
+        try {
+          const result = await runtime.runner.run(
+            `write file "big.txt" with content "${payload}" and read big.txt`,
+            {
+              // A stored transcript from an earlier run, so the span this drops is old material the
+              // model is not still being asked about.
+              history: [
+                {
+                  role: "system",
+                  content: "Use the available tools when needed, then return a final answer.",
+                },
+                { role: "user", content: "an earlier task" },
+                {
+                  role: "assistant",
+                  content: "",
+                  toolCalls: [{ id: "old-1", name: "read_text", arguments: { path: "old.txt" } }],
+                },
+                { role: "tool", content: `{"ok":true,"output":"${"z".repeat(3_000)}"}`, toolCallId: "old-1" },
+                {
+                  role: "assistant",
+                  content: "",
+                  toolCalls: [{ id: "old-2", name: "read_text", arguments: { path: "old.txt" } }],
+                },
+                { role: "tool", content: `{"ok":true,"output":"${"z".repeat(3_000)}"}`, toolCallId: "old-2" },
+              ],
+              onStep: (record) => {
+                records.push(record.messages.slice());
+              },
+            },
+          );
+          return { result, records };
+        } finally {
+          await runtime.registry.close();
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    };
+    const configured = await runWith("    context:\n      maxChars: 600\n      keepMessages: 2\n");
+    const untouched = await runWith("    maxSteps: 8\n");
+
+    expect(configured.result.status).toBe("completed");
+    expect(untouched.result.status).toBe("completed");
+    const configuredLast = configured.records.at(-1) ?? [];
+    const untouchedLast = untouched.records.at(-1) ?? [];
+    // The configured cap is the one that bites: the same run on the default cap never compacts.
+    expect(configuredLast.some((message) => message.content.startsWith("compacted transcript: "))).toBe(true);
+    expect(untouchedLast.some((message) => message.content.startsWith("compacted transcript: "))).toBe(false);
+    expect(configuredLast[0]?.role).toBe("system");
+  });
 });

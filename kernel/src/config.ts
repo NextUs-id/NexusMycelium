@@ -263,7 +263,21 @@ const ModelPluginConfigSchema = z
     promptCacheKey: z.string().max(256).pipe(safeTextSchema).optional(),
   })
   .strict();
-const LoopPluginConfigSchema = AgentOverlaySchema;
+/**
+ * Compaction policy the loop honours. Both fields are optional, so a config written before this
+ * block existed stays valid and simply carries no `context` key — the plugin then falls back to its
+ * own `DEFAULT_COMPACTION`. There is no `enabled` switch: a cap large enough is how a caller turns
+ * compaction off, and one more boolean is one more thing nothing reads.
+ */
+const ContextConfigSchema = z
+  .object({
+    maxChars: z.number().int().min(1).max(10_000_000),
+    keepMessages: z.number().int().min(1).max(200),
+  })
+  .strict();
+const LoopPluginConfigSchema = AgentOverlaySchema.extend({
+  context: ContextConfigSchema.optional(),
+}).strict();
 const ToolsPluginConfigSchema = z
   .object({
     root: toolsFields.root.optional(),

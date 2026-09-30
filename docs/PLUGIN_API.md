@@ -289,11 +289,15 @@ capability, service, tool, atau key config baru, dan `schemaVersion` session tet
 - **Capnya karakter, bukan token.** Plugin tidak memiliki tokenizer dan tidak memperkirakan jumlah
   token. `maxChars` adalah proxy yang murah, dan metering budget tetap memakai angka provider
   (`ModelUsage`), bukan hasil hitungan karakter.
-- **Belum bisa dikonfigurasi.** `LoopPluginConfigSchema` di `kernel/src/config.ts` masih
-  `AgentOverlaySchema` dan `.strict()`, jadi `plugins["loop-react"].context` **ditolak saat config
-  resolve**. Menambahkannya berarti perubahan kernel, dan 4.2 tidak mengizinkan itu; yang ada
-  sekarang hanya policy default plus opsi `compaction` pada `createAgentRunner` untuk integrator
-  yang memanggil factory secara langsung. Configurable adalah task sendiri dengan migration note.
+- ~~**Belum bisa dikonfigurasi.**~~ **Closed 4.2b (2026-09-27).** `plugins["loop-react"].context`
+  kini ada di `LoopPluginConfigSchema` (`kernel/src/config.ts`): blok `.strict()` dengan dua field
+  opsional, `maxChars` (integer 1–10.000.000) dan `keepMessages` (integer 1–200). Keduanya opsional
+  dan bloknya opsional, jadi config yang ditulis sebelum blok ini ada **tetap valid dan tidak
+  mendapat key `context` sama sekali** — plugin lalu memakai `DEFAULT_COMPACTION`-nya sendiri.
+  Tidak ada key `enabled`: cap yang cukup besar adalah cara mematikan compaction, dan satu boolean
+  lagi adalah satu hal lagi yang tidak ada yang membaca. Plugin memvalidasi ulang kedua nilai di
+  trust boundary (`compactionNumber()`) dan **mengabaikan** yang tidak bisa dihormati, bukan
+  membulatkan atau memotongnya.
 - **`AgentResult` tidak punya field compaction.** Transkrip hasil compaction terlihat lewat
   `AgentStepRecord.messages` yang dikirim ke `onStep` — dan itu berarti **ringkasan ikut
   dipersistensi** ke session store apa adanya oleh pemanggil. Session yang di-resume karena itu
@@ -306,9 +310,11 @@ capability, service, tool, atau key config baru, dan `schemaVersion` session tet
 
 ### Aturan untuk task berikutnya
 
-- Kalau 4.2b menjadikan compaction configurable, itu perubahan kernel: `LoopPluginConfigSchema`
- (strict) dan `config/default.yaml`, plus migration note karena config lama tanpa key harus tetap
-  valid.一下 Jangan menulis "compaction bisa diatur" sebelum key itu benar-benar ada dan punya test.
+- Compaction sekarang punya dua lapis config: key di `plugins["loop-react"].context` (kernel,
+  `.strict()`, ditolak saat resolve kalau salah nama atau di luar batas) dan policy default plugin
+  (`DEFAULT_COMPACTION`, 48.000 karakter dan 6 pesan terakhir). Config yang tidak menyebut blok itu
+  tidak dapat key baru, dan `config/default.yaml` **sengaja tidak** memuat blok ini supaya config
+  yang terkirim tetap persis seperti sebelumnya.
 - Kalau suatu task menjumlahkan `transcriptChars` ke meter budget, itu bridging baru antar lapis dan
   butuh test dari jalur config sampai run, seperti `configBudget()` pada 3.3. Sampai itu terjadi,
   compaction **tidak** mengubah `AgentUsage` maupun alasan stop apa pun.

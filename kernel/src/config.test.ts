@@ -772,3 +772,90 @@ describe("model prompt cache key", () => {
     }
   });
 });
+
+describe("kernel compaction config", () => {
+  it("reads a compaction block off loop-react and leaves the loop limits alone", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(
+        join(root, "user.yaml"),
+        "plugins:\n  loop-react:\n    context:\n      maxChars: 1000\n      keepMessages: 3\n",
+        "utf8",
+      );
+      const config = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      expect(pluginConfig(config, "loop-react")).toEqual({
+        maxSteps: 8,
+        maxToolCalls: 12,
+        timeoutMs: 15000,
+        context: { maxChars: 1000, keepMessages: 3 },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a config written before the block existed valid and gains no key", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(join(root, "user.yaml"), "plugins:\n  loop-react:\n    maxSteps: 5\n", "utf8");
+      const config = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      // The loop limits still merge from the top-level `agent` block, as they always did; what this
+      // task promises is narrower: an old config stays valid and gains no `context` key at all.
+      const loop = pluginConfig(config, "loop-react");
+      expect(loop.maxSteps).toBe(5);
+      expect(Object.hasOwn(loop, "context")).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a compaction value that cannot be honoured instead of rounding it", async () => {
+    const root = await configuredRoot();
+    const cases = [
+      ["maxChars: 0", /maxChars/],
+      ["maxChars: -1", /maxChars/],
+      ["maxChars: 1.5", /maxChars/],
+      ["maxChars: 99999999", /maxChars/],
+      ["keepMessages: 0", /keepMessages/],
+      ["keepMessages: 1000", /keepMessages/],
+      ["window: 10", /window/],
+      ["maxChars: 1000\n      keepMessages: 3\n      mode: summary", /mode/],
+    ] as const;
+    try {
+      for (const [body, pattern] of cases) {
+        await writeFile(
+          join(root, "user.yaml"),
+          `plugins:\n  loop-react:\n    context:\n      ${body}\n`,
+          "utf8",
+        );
+        await expect(
+          resolveConfig(root, { defaultsPath: "config/default.yaml", userPath: "user.yaml" }),
+          body,
+        ).rejects.toThrow(pattern);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a misspelled compaction block rather than leaving the default in place", async () => {
+    const root = await configuredRoot();
+    try {
+      for (const block of ["contex", "compaction", "contexts"]) {
+        await writeFile(join(root, "user.yaml"), `plugins:\n  loop-react:\n    ${block}:\n`, "utf8");
+        await expect(
+          resolveConfig(root, { defaultsPath: "config/default.yaml", userPath: "user.yaml" }),
+          block,
+        ).rejects.toThrow(new RegExp(block.slice(0, 7)));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

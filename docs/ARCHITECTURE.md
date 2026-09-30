@@ -618,6 +618,61 @@ transcript. Angka 473 = 461 (4.1b) + 10 test `context.test.ts` + 2 test integras
 batas aman yang menjaga tool call bersama hasil toolnya menggagalkan test 4 ("refuses a cut whose
 only boundary would orphan a tool call").
 
+## Status Task 4.2b — Compaction configurable dari config
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 84 files`, `tsc --noEmit` bersih, **478 test di 33 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, `bench:smoke` `{"ok":true,…,"elapsedMs":42}`, `bench:20`/`bench:accept`
+dengan `taskSetHash 645a15f7…` dan `reproducibilityHash 8135d0ff…` (identik dengan task-task
+sebelumnya — transcript mock tidak pernah melewati cap, jadi itu **bukan** achievement 4.2b), dan
+`git diff --check` tanpa output. 478 = 473 (4.2) + 1 test runtime + 4 test config kernel.
+
+Izin kernel untuk task ini datang eksplisit dari coordinator; 4.2 sendiri sengaja tidak menyentuhnya.
+
+### Bentuk yang sudah ada di source
+
+- **`plugins["loop-react"].context`** di `kernel/src/config.ts` sebagai `ContextConfigSchema` yang
+  `.strict()` dan digantung ke `LoopPluginConfigSchema` lewat `.extend()`, dengan dua field opsional:
+  `maxChars` (integer 1–10.000.000) dan `keepMessages` (integer 1–200). Tidak ada `enabled`: cap yang
+  cukup besar adalah cara mematikan compaction, dan boolean yang tidak dibaca siapa pun bukan
+  kontrol.
+- **Konsumennya nyata**: `setup()` di `plugins/loop-react/src/index.ts` membangun
+  `{ ...DEFAULT_COMPACTION, ...compactionConfig(config.context) }` lalu meneruskannya ke
+  `createAgentRunner`. `compactionConfig()` memvalidasi ulang kedua nilai di trust boundary dengan
+  batas yang sama dan **mengabaikan** nilai yang tidak bisa dihormati — bukan membulatkan, bukan
+  memotong.
+- **Migration**: blok dan field-nya opsional, jadi config lama tetap resolve dan **tidak mendapat
+  key `context` sama sekali**; `config/default.yaml` sengaja tidak memuat blok ini, jadi config yang
+  terkirim tetap persis seperti sebelumnya dan assertion dua test lama tidak perlu disentuh.
+
+### Yang TIDAK ada di 4.2b
+
+- **Tidak ada penghitung token.** `maxChars` tetap karakter; metering budget tetap memakai angka
+  provider.
+- **Tidak ada ringkasan dari LLM** dan tidak ada-call model tambahan.
+- **Tidak ada `enabled`, tidak ada level compaction, tidak ada compaction per-tool.** Tiga batas itu
+  belum jadi dan tidak boleh ditulis sebagai kemampuan.
+- **Compaction bisa mengubah perilaku model yang membaca transcript-nya sendiri.** Provider `mock`
+  menentukan "sudah dikerjakan" dari tool call yang masih terlihat di transcript; span lama yang
+  dibuang bisa membuatnya mengulang pekerjaan. Itu konsekuensi yang diharapkan dari compaction, bukan
+  bug — tapi itu sebabnya test closure 4.2b memakai history lama sebagai span yang dibuang, bukan
+  langkah yang sedang berjalan.
+
+### Kriteria falsifiable 4.2b
+
+1. "reads a compaction block off loop-react and leaves the loop limits alone"
+   (`kernel/src/config.test.ts`).
+2. "keeps a config written before the block existed valid and gains no key" — config lama tetap
+   valid dan `Object.hasOwn(loop, "context")` bernilai `false`.
+3. "refuses a compaction value that cannot be honoured instead of rounding it" — delapan kasus
+   negatif: nol, negatif, pecahan, melebihi ceiling, `keepMessages` 0 dan 1000, key typo di dalam
+   blok, dan key yang tidak dikenal.
+4. "refuses a misspelled compaction block rather than leaving the default in place".
+5. "takes the compaction cap from config all the way into the run"
+   (`plugins/loop-react/src/index.test.ts`) — dua run identik lewat `createRuntime`, satu dengan
+   `context.maxChars: 600` dan satu tanpa blok; hanya yang pertama yang memadatkan transcript.
+   **Dipalsukan**: membuat `setup()` mengabaikan `config.context` menggagalkan test ini.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.
