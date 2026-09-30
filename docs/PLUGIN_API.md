@@ -395,6 +395,51 @@ dan `schemaVersion` session **tidak berubah** pada task ini.
 - Kalau suatu task butuh tool paralel yang benar-benar terisolasi, itu bukan fitur loop — itu
   mekanisme tool (namespace, lock, atau tool runner sendiri) dan butuh task tersendiri.
 
+## Tool edit berbasis patch dan batasnya terhadap Plugin API (Task 4.4)
+
+Task 4.4 menambahkan satu tool official, `edit_text` di `plugins/tools-basic`. Bentuknya **daftar
+penggantian teks persis** yang diterapkan berurutan, bukan unified diff berline-number dan bukan
+regex. Alasannya: pola ini butuh nol baris konteks, tidak punya parser, dan kegagalannya bisa
+dinyatakan persis ("tidak cocok di edit ke-2") tanpa menebak diff yang ambigu.
+
+### Yang masuk ke source, dan sifatnya
+
+- **Satu tool, bukan mode baru.** `write_text` tetap ada dan tetap menimpa seluruh file; tidak ada
+  jalur yang diam-diam memakai patch. `edit_text` hanya menambah pilihan.
+- **Semua edit dihitung dulu, ditulis sekali.** Edit yang gagal cocok berarti **tidak ada** yang
+  ditulis, dan pesannya menyebut nomor edit yang gagal. Inilah yang membuat patch bisa direview dan
+  tidak pernah dilaporkan sebagai sukses parsial.
+- **Tiga penolakan yang eksplisit**: `oldText` tidak ditemukan; `oldText` muncul lebih dari sekali
+  dan `replaceAll` tidak diminta; hasil akhir melewati `maxBytes`. `oldText` kosong ditolak di schema,
+  dan `edits` kosong atau key asing juga ditolak.
+- **Tidak menyentuh symlink dan tidak keluar dari root.** Edit memakai `assertPath` + `lstat` +
+  `resolveExisting`, jadi berkas yang diakses lewat symlink ditolak dengan pesan yang sama seperti
+  `write_text`, dan path di luar root ditolak sebelum dibaca.
+- **Izin yang dibutuhkan tetap `fs.write`**, dan `throwIfAborted` dicek di awal, sebelum baca, dan
+  sebelum tulis.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Bukan unified diff dan bukan edit berbasis line.** Tidak ada `@@ -1,3 +1,4 @@`, tidak ada nomor
+  baris, dan tidak ada patching sebagian terhadap byte offset.
+- **Tidak ada diff output.** Tool mengembalikan `{ ok, path, edits, replacements, bytes }`, bukan
+  patch terbalik — jadi `edit_text` tidak bisa dipakai untuk membatalkan dirinya sendiri.
+- **Tidak ada pengukuran token.** Yang terukur adalah karakter argumen tool: 829 untuk tulis ulang
+  versus 179 untuk patch pada skenario `bench:edit` (`benchmarks/README.md`, "Status Task 4.4"). Itu
+  batas atas yang condong juga: skenarionya file 732 karakter dengan dua edit kecil.
+- **Tidak ada undo, tidak ada lock, tidak ada edit di luar root**, dan tidak ada jalur untuk tool
+  dengan efek samping yang berjalan bersamaan.
+- **Tool set berubah**, jadi `phases.discovery.tools` di `bench:accept` sekarang memuat
+  `["edit_text","read_text","shell","write_text"]`. `taskSetHash` dan `reproducibilityHash` **tidak
+  berubah** karena keduanya tidak memuat daftar tool.
+
+### Aturan untuk task berikutnya
+
+- Kalau suatu task ingin patch yang bisa dibalik, itu `edit_diff`/`apply_patch` sebagai tool terpisah
+  plus diff output, dan harus menyertakan test yang membuktikan patch yang salah tidak damaging.
+- Kalau 7.x memakai `edit_text` untuk patch `agent-made`, gate 7.1 yang membuktikan patch buruk
+  otomatis ditolak tetap belum ada; yang ada sekarang hanya tool-nya.
+
 ## Test dan CI secret-free
 
 

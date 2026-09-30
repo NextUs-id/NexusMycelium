@@ -867,6 +867,55 @@ coordinator untuk task lanjutan 4.2b, dan dipakai di sini sempit.
    sama: config `parallelToolCalls: true` memberi `overlap.peak` 2, config tanpa kunci memberi 1.
    **Dipalsukan**: membuat `setup()` mengabaikan config menggagalkan test ini.
 
+## Status Task 4.4 — Tool edit berbasis patch
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 88 files`, `tsc --noEmit` bersih, **507 test di 35 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, `bench:20` 20/20 dengan `taskSetHash 645a15f7…` dan
+`reproducibilityHash 8135d0ff…` (**tidak berubah** — keduanya tidak memuat daftar tool),
+`bench:accept` `accepted` dengan `violations: []`, `bench:edit` exit 0, dan `git diff --check` tanpa
+output.
+
+### Bentuk yang sudah ada di source
+
+- **`edit_text`** di `plugins/tools-basic/src/index.ts`: daftar penggantian teks persis yang diterapkan
+  berurutan terhadap hasil edit sebelumnya, ditulis **sekali** setelah semua edit dihitung. Bentuk ini
+  dipilih karena tidak butuh konteks line dan kegagalannya bisa dinyatakan persis.
+- **Penolakan eksplisit**: `oldText` tidak ditemukan, `oldText` ambigu tanpa `replaceAll`, hasil
+  melewati `maxBytes`, `oldText` kosong, `edits` kosong, key asing, symlink, path di luar root,
+  berkas tidak ada, dan `fs.write` ditolak.
+- **`benchmarks/edit.ts`** + `corepack pnpm bench:edit`: 829 karakter argumen untuk tulis ulang versus
+  179 untuk patch, `charsSaved` 650 (78,41%), `resultIdentical` `true`.
+
+### Yang TIDAK ada di 4.4
+
+- **Bukan unified diff**, tidak ada nomor baris, tidak ada patch byte-offset, dan tidak ada diff
+  output — jadi tool ini tidak bisa dipakai untuk membatalkan editnya sendiri.
+- **Bukan penghematan token.** Yang terukur adalah karakter argumen tool, dan angka 78,41% adalah
+  batas atas yang condong: skenarionya membuat tulis ulang mahal secara sengaja. Tidak ada klaim
+  kecepatan dan report tidak memuat `elapsedMs`.
+- **Tidak ada undo, lock, atau edit lintas root**, dan tidak ada jalur yang menggabungkan patch dengan
+  tool yang berefek samping.
+- **Gate 7.1 belum ada.** Tool-nya ada, tetapi pipeline yang menolak patch buruk secara otomatis
+  tetap 7.1/7.4.
+
+### Kriteria falsifiable 4.4
+
+1. "replaces exact text, applies edits in order, and reports what it changed"
+   (`plugins/tools-basic/src/index.test.ts`).
+2. "writes nothing when one edit does not match, and says which one" — edit 1 cocok, edit 2 tidak, dan
+   berkas tetap apa adanya.
+3. "refuses an ambiguous match unless the caller asks for every occurrence" — dua `x` ditolak tanpa
+   `replaceAll`, lalu diganti keduanya dengan `replaceAll: true`.
+4. "refuses an empty oldText, an empty edit list, and unknown keys"; "refuses a file that is missing, a
+   path outside the root, and a symlink"; "needs the write permission and honours the configured size
+   ceiling".
+5. "shows fewer argument characters for a patch and lands the same file" dan "measures characters and
+   refuses to report tokens or a speed claim" (`benchmarks/edit.test.ts`), plus gate negatif "fails the
+   gate when there is nothing to save, instead of calling it a win".
+6. **Dipalsukan**: menghapus penjaga `matches > 1` menggagalkan test 3; menghapus penjaga
+   `matches === 0` menggagalkan test 2.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

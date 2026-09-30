@@ -213,7 +213,12 @@ describe("sandbox runner security contract", () => {
       const granted = await readSandboxConfig(sandbox.root);
       expect(granted).toMatch(/allow: \[\]/);
       expect(granted).toMatch(/deny: \["\*"\]/);
-      expect(sandbox.tools.list().map((tool) => tool.name)).toEqual(["read_text", "write_text", "shell"]);
+      expect(sandbox.tools.list().map((tool) => tool.name)).toEqual([
+        "read_text",
+        "write_text",
+        "edit_text",
+        "shell",
+      ]);
 
       await expect(
         sandbox.tools.get("shell").execute({ executable: process.execPath, args: ["-e", ""] }),

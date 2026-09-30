@@ -14,6 +14,28 @@ const truncationMarker = "\n[output truncated]";
 const envAllowlist = ["PATH", "LANG", "LC_ALL", "TMPDIR"] as const;
 const readInputSchema = z.object({ path: z.string().min(1) }).strict();
 const writeInputSchema = z.object({ path: z.string().min(1), content: z.string() }).strict();
+/**
+ * A patch is a list of exact replacements, applied in order against the result of the previous one.
+ * `oldText` may not be empty: an empty needle has no honest meaning, and `replaceAll` on one would
+ * rewrite the whole file without saying so.
+ */
+const editInputSchema = z
+  .object({
+    path: z.string().min(1),
+    edits: z
+      .array(
+        z
+          .object({
+            oldText: z.string().min(1),
+            newText: z.string(),
+            replaceAll: z.boolean().default(false),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
 const shellInputSchema = z
   .object({
     executable: z.string().min(1),
@@ -144,6 +166,32 @@ function writeSchema(): Readonly<Record<string, unknown>> {
   };
 }
 
+function editSchema(): Readonly<Record<string, unknown>> {
+  return {
+    type: "object",
+    properties: {
+      path: { type: "string", minLength: 1 },
+      edits: {
+        type: "array",
+        minItems: 1,
+        maxItems: 100,
+        items: {
+          type: "object",
+          properties: {
+            oldText: { type: "string", minLength: 1 },
+            newText: { type: "string" },
+            replaceAll: { type: "boolean", default: false },
+          },
+          required: ["oldText", "newText"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["path", "edits"],
+    additionalProperties: false,
+  };
+}
+
 function shellSchema(): Readonly<Record<string, unknown>> {
   return {
     type: "object",
@@ -210,6 +258,78 @@ function writeTextTool(root: string, permissions: PermissionGate, maxBytes: numb
         await handle.close();
       }
       return JSON.stringify({ ok: true, path: parsed.path, bytes });
+    },
+  };
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+/**
+ * Edit a file by exact replacement instead of rewriting it. Everything is computed first and written
+ * once, so a patch that does not apply leaves the file exactly as it was — the property that makes a
+ * patch reviewable, and the reason a failed edit must never be reported as a partial success.
+ */
+function editTextTool(root: string, permissions: PermissionGate, maxBytes: number): Tool {
+  return {
+    name: "edit_text",
+    description:
+      "Replace exact text inside a UTF-8 text file inside the configured root. Every edit must match, or nothing is written.",
+    inputSchema: editSchema(),
+    async execute(input, signal) {
+      throwIfAborted(signal);
+      const parsed = editInputSchema.parse(input);
+      await permissions.check("fs.write", `edit ${parsed.path}`);
+      throwIfAborted(signal);
+      const candidate = assertPath(root, parsed.path);
+      if ((await lstat(candidate)).isSymbolicLink()) {
+        throw new Error("tool path cannot write through a symlink");
+      }
+      const file = await resolveExisting(root, parsed.path);
+      const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let content: string;
+      try {
+        const info = await handle.stat();
+        if (info.size > maxBytes) throw new Error(`file exceeds the ${maxBytes}-byte limit`);
+        content = await handle.readFile({ encoding: "utf8" });
+      } finally {
+        await handle.close();
+      }
+      let next = content;
+      let replacements = 0;
+      for (const [index, edit] of parsed.edits.entries()) {
+        throwIfAborted(signal);
+        const matches = countOccurrences(next, edit.oldText);
+        if (matches === 0) {
+          throw new Error(`edit ${index + 1}: oldText not found; nothing was written`);
+        }
+        if (matches > 1 && !edit.replaceAll) {
+          throw new Error(
+            `edit ${index + 1}: oldText has ${matches} matches; include more context or pass replaceAll`,
+          );
+        }
+        next = edit.replaceAll
+          ? next.split(edit.oldText).join(edit.newText)
+          : next.replace(edit.oldText, edit.newText);
+        replacements += edit.replaceAll ? matches : 1;
+      }
+      const bytes = Buffer.byteLength(next, "utf8");
+      if (bytes > maxBytes) throw new Error(`result exceeds the ${maxBytes}-byte limit`);
+      throwIfAborted(signal);
+      const writer = await open(file, constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+      try {
+        await writer.writeFile(next, "utf8");
+      } finally {
+        await writer.close();
+      }
+      return JSON.stringify({
+        ok: true,
+        path: parsed.path,
+        edits: parsed.edits.length,
+        replacements,
+        bytes,
+      });
     },
   };
 }
@@ -458,6 +578,7 @@ export function createBasicTools(options: BasicToolsOptions): ToolRegistry {
   const tools = new ToolRegistry();
   tools.register(readTextTool(root, options.permissions, maxBytes));
   tools.register(writeTextTool(root, options.permissions, maxBytes));
+  tools.register(editTextTool(root, options.permissions, maxBytes));
   tools.register(
     shellTool(root, options.permissions, {
       allow: options.shell?.allow ?? [],

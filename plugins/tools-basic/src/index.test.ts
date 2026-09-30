@@ -106,9 +106,163 @@ describe("tools-basic", () => {
     try {
       await registry.load("tools-basic");
       const tools = registry.services.get<ToolRegistry>("tool:core");
-      expect(tools.list().map((tool) => tool.name)).toEqual(["read_text", "write_text", "shell"]);
+      expect(tools.list().map((tool) => tool.name)).toEqual([
+        "read_text",
+        "write_text",
+        "edit_text",
+        "shell",
+      ]);
     } finally {
       await registry.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("edit_text", () => {
+  it("replaces exact text, applies edits in order, and reports what it changed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    try {
+      const tools = createBasicTools({ root, permissions: permissions() });
+      await writeFile(join(root, "note.txt"), "alpha beta gamma", "utf8");
+      const value = (await tools.get("edit_text").execute({
+        path: "note.txt",
+        edits: [
+          { oldText: "beta", newText: "BETA" },
+          { oldText: "gamma", newText: "delta" },
+        ],
+      })) as string;
+      expect(JSON.parse(value)).toEqual({
+        ok: true,
+        path: "note.txt",
+        edits: 2,
+        replacements: 2,
+        bytes: 16,
+      });
+      expect(await readFile(join(root, "note.txt"), "utf8")).toBe("alpha BETA delta");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing when one edit does not match, and says which one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    try {
+      const tools = createBasicTools({ root, permissions: permissions() });
+      await writeFile(join(root, "note.txt"), "alpha beta", "utf8");
+      await expect(
+        tools.get("edit_text").execute({
+          path: "note.txt",
+          edits: [
+            { oldText: "beta", newText: "BETA" },
+            { oldText: "missing", newText: "x" },
+          ],
+        }),
+      ).rejects.toThrow(/edit 2/);
+      // The first edit matched but nothing was written: an edit is all or nothing.
+      expect(await readFile(join(root, "note.txt"), "utf8")).toBe("alpha beta");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an ambiguous match unless the caller asks for every occurrence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    try {
+      const tools = createBasicTools({ root, permissions: permissions() });
+      await writeFile(join(root, "note.txt"), "x x", "utf8");
+      await expect(
+        tools.get("edit_text").execute({ path: "note.txt", edits: [{ oldText: "x", newText: "y" }] }),
+      ).rejects.toThrow(/2 matches/);
+      expect(await readFile(join(root, "note.txt"), "utf8")).toBe("x x");
+      const value = (await tools.get("edit_text").execute({
+        path: "note.txt",
+        edits: [{ oldText: "x", newText: "y", replaceAll: true }],
+      })) as string;
+      expect(JSON.parse(value)).toMatchObject({ ok: true, edits: 1, replacements: 2 });
+      expect(await readFile(join(root, "note.txt"), "utf8")).toBe("y y");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an empty oldText, an empty edit list, and unknown keys", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    try {
+      const tools = createBasicTools({ root, permissions: permissions() });
+      await writeFile(join(root, "note.txt"), "alpha", "utf8");
+      await expect(
+        tools.get("edit_text").execute({ path: "note.txt", edits: [{ oldText: "", newText: "x" }] }),
+      ).rejects.toThrow();
+      await expect(tools.get("edit_text").execute({ path: "note.txt", edits: [] })).rejects.toThrow();
+      await expect(
+        tools.get("edit_text").execute({
+          path: "note.txt",
+          edits: [{ oldText: "alpha", newText: "x", mode: "patch" }],
+        }),
+      ).rejects.toThrow();
+      await expect(tools.get("edit_text").execute({ path: "note.txt", content: "alpha" })).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a file that is missing, a path outside the root, and a symlink", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    const outside = await mkdtemp(join(tmpdir(), "nexus-edit-outside-"));
+    try {
+      const tools = createBasicTools({ root, permissions: permissions() });
+      await writeFile(join(outside, "secret.txt"), "secret", "utf8");
+      await writeFile(join(root, "real.txt"), "alpha", "utf8");
+      await expect(
+        tools.get("edit_text").execute({ path: "absent.txt", edits: [{ oldText: "a", newText: "b" }] }),
+      ).rejects.toThrow();
+      await expect(
+        tools.get("edit_text").execute({
+          path: "../secret.txt",
+          edits: [{ oldText: "secret", newText: "leaked" }],
+        }),
+      ).rejects.toThrow(/escapes/);
+      await symlink(join(outside, "secret.txt"), join(root, "link.txt"));
+      await expect(
+        tools.get("edit_text").execute({
+          path: "link.txt",
+          edits: [{ oldText: "secret", newText: "leaked" }],
+        }),
+      ).rejects.toThrow(/symlink/);
+      await expect(
+        tools.get("edit_text").execute({
+          path: "real.txt",
+          edits: [{ oldText: "alpha", newText: "beta beta beta" }],
+          replaceAll: true,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("needs the write permission and honours the configured size ceiling", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-edit-"));
+    try {
+      const denied = createBasicTools({
+        root,
+        permissions: new PermissionGate({ "fs.read": "allow", "fs.write": "deny", shell: "deny" }),
+      });
+      await writeFile(join(root, "note.txt"), "alpha", "utf8");
+      await expect(
+        denied.get("edit_text").execute({ path: "note.txt", edits: [{ oldText: "alpha", newText: "beta" }] }),
+      ).rejects.toThrow(/fs.write/);
+      const small = createBasicTools({ root, permissions: permissions(), maxBytes: 6 });
+      await expect(
+        small.get("edit_text").execute({
+          path: "note.txt",
+          edits: [{ oldText: "alpha", newText: "a much longer replacement" }],
+        }),
+      ).rejects.toThrow(/6-byte limit/);
+      expect(await readFile(join(root, "note.txt"), "utf8")).toBe("alpha");
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   });

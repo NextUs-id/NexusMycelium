@@ -42,6 +42,21 @@ Bentuk skenarionya tetap: 8 putaran tool yang tiap hasil tool-nya 4.000 karakter
 
 Gate harness menolak dengan exit 1 kalau `charsSaved` 0, ada instruksi/jawaban yang hilang, atau ada hasil tool yatim. Uji negatifnya memakai cap yang tidak terjangkau, jadi "nol penghematan" ditolak dan bukan dilaporkan sebagai sukses. Tidak ada mode report-only.
 
+## Status Task 4.4 — Harness pengukuran edit berbasis patch
+
+Satu perubahan, dua cara: tulis ulang seluruh file dengan `write_text`, atau kirim patch dengan `edit_text`. Harness ini melaporkan karakter argumen tool yang harus diserahkan model untuk tiap strategi, dan apakah keduanya berakhir dengan berkas yang sama persis.
+
+```bash
+corepack pnpm bench:edit
+# tsc -p tsconfig.build.json && node dist/benchmarks/edit.js
+```
+
+Skenarionya tetap: berkas 732 karakter berisi 40 baris, dua baris diganti. Run canonical menghasilkan `rewrite.argumentChars` 829 dan `patch.argumentChars` 179, jadi `charsSaved` 650 atau **78,41%**, dengan `resultIdentical` `true`.
+
+**Angka itu batas atas yang condong, dan bukan token.** Skenarionya disengaja membuat tulis ulang mahal — berkas 732 karakter untuk dua baris yang berubah. Pada berkas besar dengan banyak baris tak terpakai, selisihnya jauh lebih besar; pada edit yang menyentuh hampir seluruh berkas, patch bisa lebih besar dari tulis ulang, dan `charsSaved` bisa negatif. `tokensMeasured` `false` dan `usage.status` `unavailable` karena tidak ada provider di harness ini; tidak ada klaim kecepatan, dan report sengaja tidak memuat `elapsedMs`.
+
+Gate menolak dengan exit 1 kalau `charsSaved` 0 atau `resultIdentical` `false`; uji negatifnya memakai skenario yang tidak punya apa pun untuk dihemat, dan angkanya dihitung ulang, bukan dipakai ulang. Tidak ada mode report-only.
+
 ## Kontrak 20 task
 
 Task ID yang harus ada di `benchmarks/tasks.ts` adalah: `ts-constant`, `py-add`, `json-record`, `yaml-settings`, `css-grid`, `html-main`, `sql-filter`, `slug-regex`, `weekday-check`, `markdown-note`, `state-initial`, `csv-header`, `env-mode`, `xml-record`, `ignore-list`, `average`, `badge-component`, `health-handler`, `rust-answer`, dan `jsonl-event`.
