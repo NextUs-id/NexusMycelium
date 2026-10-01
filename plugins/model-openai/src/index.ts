@@ -514,7 +514,7 @@ export default definePlugin({
     version: "0.1.0",
     apiVersion: 1,
     description: "OpenAI-compatible HTTP model provider.",
-    provides: ["model:openai"],
+    provides: ["model:openai", "model:openai-strong"],
     permissions: ["fs.read", "network"],
   },
   async setup({ config, permissions, services }) {
@@ -534,5 +534,25 @@ export default definePlugin({
       permissions,
     });
     services.register("model:openai", model, "model-openai");
+    // A second capability, not a second plugin: the strong model is the same gateway with another
+    // name, so it shares the key, the base URL, and the prefix allowlist, and a name the allowlist
+    // refuses is refused at construction instead of at the first request.
+    const router = config.router;
+    if (isRecord(router) && router.enabled === true) {
+      const strong = configString(router, "strong", "");
+      services.register(
+        "model:openai-strong",
+        createOpenAICompatibleModel({
+          baseUrl: configString(config, "baseUrl", "https://api.openai.com/v1"),
+          model: strong,
+          timeoutMs: configNumber(config, "timeoutMs", 5000),
+          apiKeyEnv: configString(config, "apiKeyEnv", "OPENAI_API_KEY"),
+          apiKey,
+          allowedModelPrefixes: configPrefixes(config),
+          permissions,
+        }),
+        "model-openai",
+      );
+    }
   },
 });

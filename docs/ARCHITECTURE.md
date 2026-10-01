@@ -968,6 +968,59 @@ penghitung token saat gateway melaporkannya).
    (`src/cli.test.ts`) — exit 1 tanpa file, exit 0 dengan isi.
    **Dipalsukan**: mengubah `unavailable`/`unpriced` menjadi `0` menggagalkan test 2.
 
+## Status Task 4.5 — Router model murah/kuat
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 92 files`, `tsc --noEmit` bersih, **524 test di 37 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, dan `git diff --check` tanpa output. 524 = 521 (sebelum 4.5) + 3 test
+config kernel + 6 test router. `bench:20`/`bench:accept` tidak dijalankan ulang dan **tidak boleh
+dikutip sebagai achievement 4.5**: canonical benchmark memakai `model-mock`, yang tidak punya model
+kuat dan tidak punya harga, jadi ia tidak bisa menguji router.
+
+Bentuk yang dipilih — **satu keputusan per run** — datang dari batasan kontrak, bukan dari selera:
+`ModelProvider.complete(messages, tools, signal)` tidak punya parameter model dan `model-openai`
+memlekati `model` saat `setup()`. Mengganti model di tengah percakapan berarti mengubah kontrak kernel;
+memilih sebelum run tidak.
+
+### Bentuk yang sudah ada di source
+
+- **`plugins["model-openai"].router`** (`kernel/src/config.ts`, `ModelPluginConfigSchema` `.strict()`):
+  `strong` wajib saat blok ada, `enabled` default `false`, `maxTaskChars` default 2000.
+- **`model:openai-strong`** sebagai capability kedua dari plugin yang sama, dengan key, base URL, dan
+  prefix allowlist yang sama; model yang dilarang allowlist ditolak saat konstruksi.
+- **`src/router.ts`**: `routerPolicy()` dan `chooseRouterModel()` — murni, tanpa panggilan model.
+- **`src/runtime.ts`**: routing diselesaikan per run, jadi `run-start` mencatat model yang dipakai dan
+  `nexus report` 4.6 priced dengan benar. `SessionAgent.router` membuat sesi dipin ke model yang dipilih
+  task-nya, dan resume lintas model gagal closed.
+- **An armed cost ceiling pada model kuat tanpa harga** menghentikan run sebagai
+  `budget:cost-unpriced`, dengan tepat satu request terkirim (guard berbeda dari run pada langkah
+  pertama).
+
+### Yang TIDAK ada di 4.5
+
+- **Heuristik karakter, bukan tingkat kesulitan.** Task panjang tapi sepele naik ke model kuat; task
+  pendek tapi halus tetap murah. Tidak ada harness yang mengukur apakah routing itu hemat.
+- **Tidak ada escalation setelah gagal** (4.5b), tidak ada routing per prompt di tengah run, tidak
+  ada fallback diam-diam, dan tidak ada-suite live.
+- **Tidak ada perubahan kontrak kernel**: satu-satunya perubahan kernel adalah satu blok config
+  optional di `ModelPluginConfigSchema`. Tidak ada event, capability baru di kernel, atau tool baru.
+- **Tidak ada klaim penghematan.** Tanpa harness, 4.5 tidak punya angka; yang diklaim hanya "keputusan
+  benar dan tercatat", bukan "lebih murah".
+
+### Kriteria falsifiable 4.5
+
+1. "keeps a short task on the cheap model and a long one on the strong model" dan "measures the trimmed
+   task, so padding cannot buy the strong model" (`src/router.test.ts`).
+2. "resolves a policy only from a block that is switched on and names a different model".
+3. "reads a router block off model-openai", "defaults the threshold and gains no key when the block is
+   absent", "refuses a block with no strong model, a bad flag, and unknown keys" (`kernel/src/config.test.ts`).
+4. "runs a short task on the cheap model and a long one on the strong model, and records both" — dua
+   request dengan `model` berbeda dan dua baris `run-start` yang sesuai.
+5. "stops a routed run as unpriced when the strong model has no price, instead of running it free".
+6. "pins a session to the model its task routed to, and refuses a resume that would switch models".
+   **Dipalsukan**: memaksa router selalu memilih model murah menggagalkan test 4 dan 5; mencatat model
+   config di trace menggagalkan test 4; memundialkan identitas sesi ke model config menggagalkan test 6.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

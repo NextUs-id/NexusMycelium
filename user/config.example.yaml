@@ -64,3 +64,11 @@ plugins:
   #   # Panggilan tool dalam satu giliran berjalan bersamaan. Semua panggilan mulai bersamaan, jadi tool
   #   # dengan efek samping bisa berjalan setelah run di-abort. Default-nya serial.
   #   parallelToolCalls: true
+  # model-openai:
+  #   # Router murah/kuat: task di atas maxTaskChars karakter berjalan di model `strong`.
+  #   # `strong` wajib kalau blok ini ada; `enabled` default false, jadi blok ini saja tidak mengubah apa pun.
+  #   # Ini ambang karakter, bukan tingkat kesulitan: task panjang yang sepele tetap naik ke model kuat.
+  #   router:
+  #     enabled: false
+  #     strong: vendor/strong-1
+  #     maxTaskChars: 2000

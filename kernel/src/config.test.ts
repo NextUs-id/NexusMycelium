@@ -914,3 +914,79 @@ describe("kernel parallel tool call config", () => {
     }
   });
 });
+describe("kernel model router config", () => {
+  it("reads a router block off model-openai", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(
+        join(root, "user.yaml"),
+        "plugins:\n  model-openai:\n    router:\n      enabled: true\n      strong: vendor/strong-1\n      maxTaskChars: 500\n",
+        "utf8",
+      );
+      const config = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      expect(pluginConfig(config, "model-openai").router).toEqual({
+        enabled: true,
+        strong: "vendor/strong-1",
+        maxTaskChars: 500,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("defaults the threshold and gains no key when the block is absent", async () => {
+    const root = await configuredRoot();
+    try {
+      await writeFile(
+        join(root, "user.yaml"),
+        "plugins:\n  model-openai:\n    router:\n      strong: vendor/strong-1\n",
+        "utf8",
+      );
+      const withBlock = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      // A block that only names a model stays switched off: naming a strong model changes nothing
+      // until someone enables it.
+      expect(pluginConfig(withBlock, "model-openai").router).toEqual({
+        enabled: false,
+        strong: "vendor/strong-1",
+        maxTaskChars: 2000,
+      });
+      await writeFile(join(root, "user.yaml"), "model:\n  provider: mock\n", "utf8");
+      const withoutBlock = await resolveConfig(root, {
+        defaultsPath: "config/default.yaml",
+        userPath: "user.yaml",
+      });
+      expect(Object.hasOwn(pluginConfig(withoutBlock, "model-openai"), "router")).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a block with no strong model, a bad flag, and unknown keys", async () => {
+    const root = await configuredRoot();
+    const cases: readonly (readonly [string, RegExp])[] = [
+      ["router:\n      enabled: true\n", /strong/],
+      ["router:\n      strong: vendor/s\n      enabled: sometimes\n", /enabled/],
+      ["router:\n      strong: vendor/s\n      maxTaskChars: 0\n", /maxTaskChars/],
+      ["router:\n      strong: vendor/s\n      maxTaskChars: 1.5\n", /maxTaskChars/],
+      ["router:\n      strong: vendor/s\n      swicth: true\n", /swicth/],
+      ["router:\n      strong: vendor/s\n      promptCacheKey: k\n", /promptCacheKey/],
+    ];
+    try {
+      for (const [body, pattern] of cases) {
+        await writeFile(join(root, "user.yaml"), `plugins:\n  model-openai:\n    ${body}`, "utf8");
+        await expect(
+          resolveConfig(root, { defaultsPath: "config/default.yaml", userPath: "user.yaml" }),
+          body,
+        ).rejects.toThrow(pattern);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -483,6 +483,56 @@ mencetak tabel biaya dan token per task. Tidak ada ledger baru, tidak ada persis
 - Kalau sebuah task membuat angka "hemat", nyatakan dimensinya: karakter, token, atau waktu. Laporan
   ini hanya memenuhi karakter dan token yang benar-benar dilaporkan gateway.
 
+## Router model murah/kuat dan batasnya terhadap Plugin API (Task 4.5)
+
+Task 4.5 menambah **satu provider kedua** dan **satu keputusan per run**. Bukan per panggilan, bukan
+escalation setelah gagal, dan bukan classifier: kontrak model `ModelProvider.complete()` tidak punya
+parameter model dan `model-openai` memlekati `model` saat `setup()`, jadi model baru bisa dipilih
+sebelum run — tidak bisa di tengah percakapan tanpa mengubah kontrak kernel.
+
+### Yang masuk ke source, dan sifatnya
+
+- **`plugins["model-openai"].router`** di `ModelPluginConfigSchema`: `{ enabled, strong, maxTaskChars }`
+  yang `.strict()`. **`strong` wajib** kalau blok ada (router tanpa model kuat tidak punya tujuan),
+  `enabled` default `false` (blok yang hanya menyebut model tidak mengubah apa pun sampai dinyalakan),
+  dan `maxTaskChars` default 2000.
+- **Capability baru `model:openai-strong`**, didaftarkan oleh plugin yang sama dengan key, base URL,
+  dan prefix allowlist yang sama. Prefix yang melarang model kuat **ditolak saat konstruksi**, bukan
+  saat request pertama.
+- **`src/router.ts`** adalah fungsi murni: `routerPolicy(config)` dan `chooseRouterModel(task, policy)`.
+  Keputusannya satu pengukuran — jumlah karakter task setelah `trim()` — dan **tidak ada** panggilan
+  model, skor, atau state tersembunyi.
+- **`src/runtime.ts` menyelesaikan routing per run.** Provider, identitas model, dan amplop trace
+  semuanya baru diambil ketika task diketahui, sehingga `run-start` mencatat model yang benar-benar
+  dipakai dan `nexus report` 4.6 tetap priced dengan benar.
+- **Sesi ikut dipin ke model yang dipilih task-nya** (`SessionAgent.router`). Resume yang task-nya
+  merute ke model lain **gagal closed** dengan pesan yang menyebut kedua model, bukan diam-diam
+  melanjutkan transcript di bawah model berbeda.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Ambangnya jumlah karakter, bukan tingkat kesulitan.** Task 3.000 karakter yang sepele tetap ke
+  model kuat, dan task 10 karakter yang halus tetap ke model murah. Ini heuristic kasar yang
+  dinyatakan, bukan classifier; menggantinya perlu pengukuran akurasi per bucket dari report 4.6.
+- **Tidak ada escalation setelah gagal.** Run yang gagal di model murah **tidak** dicoba ulang di
+  model kuat; itu 4.5b, dan biayanya jauh lebih besar.
+- **Tidak ada routing per prompt di tengah run.** Satu run = satu model, selalu.
+- **Router mati kalau model kuat sama dengan model murah** atau bloknya tidak ada; tidak ada
+  fallback diam-diam ke model lain.
+- ** unarmed cost ceiling pada model kuat tanpa harga menghentikan run sebagai
+  `budget:cost-unpriced`** — bukan jalan gratis. Guard-belajar dari satu giliran pertama, jadi
+  tepat satu request terkirim sebelum run berhenti.
+- **Tidak ada akurasi terukur dan tidak ada harness.** Belum ada angka yang menunjukkan routing
+  menghemat biaya tanpa menurunkan kualitas; 4.5 belum punya bukti penghematan seperti 4.2d/4.4.
+
+### Aturan untuk task berikutnya
+
+- Kalau suatu task menambah "alasan" lain ke keputusan router (misalnya jumlah tool yang dibutuhkan),
+  keputusannya harus tetap bisa dijelaskan dari task dan config saja, dan setiap aturan baru harus punya
+  test yang memalsukanya di `src/router.test.ts`.
+- Kalau 4.5b menambah escalation setelah gagal, ia harus mencatat **dua run** (dua `run-start`), bukan
+  satu run dengan dua model, supaya atribusi biaya di trace dan report tidak berbohong.
+
 ## Test dan CI secret-free
 
 

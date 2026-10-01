@@ -252,6 +252,19 @@ const PluginsConfigSchema = z
       });
     }
   });
+/**
+ * The router block. `strong` is required whenever the block exists — a router with no strong model has
+ * nowhere to escalate to — while `enabled` defaults to false, so a block that only names a model
+ * changes nothing until it is switched on. `maxTaskChars` defaults to {@link DEFAULT_ROUTER_MAX_TASK_CHARS}.
+ */
+export const DEFAULT_ROUTER_MAX_TASK_CHARS = 2000;
+const ModelRouterSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    strong: safeTextSchema,
+    maxTaskChars: z.number().int().min(1).max(1_000_000).default(DEFAULT_ROUTER_MAX_TASK_CHARS),
+  })
+  .strict();
 const ModelPluginConfigSchema = z
   .object({
     model: modelFields.model.optional(),
@@ -261,6 +274,7 @@ const ModelPluginConfigSchema = z
     apiKeyFile: modelSecretPathSchema.optional(),
     allowedModelPrefixes: modelPrefixSchema.optional(),
     promptCacheKey: z.string().max(256).pipe(safeTextSchema).optional(),
+    router: ModelRouterSchema.optional(),
   })
   .strict();
 /**

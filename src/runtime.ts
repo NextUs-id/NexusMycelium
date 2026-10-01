@@ -4,6 +4,7 @@ import type {
   AgentResult,
   AgentRunner,
   AgentRunnerFactory,
+  AgentRunOptions,
   AgentStepRecord,
   BudgetPolicy,
   BudgetStopReason,
@@ -13,6 +14,7 @@ import { permissionConfig, pluginConfig, type ResolvedConfig, resolveConfig } fr
 import { discoverPlugins, type PermissionAsk, PermissionGate, Registry } from "../kernel/src/index.js";
 import type { ModelMessage, ModelProvider, ModelUsage } from "../kernel/src/model.js";
 import type { ToolRegistry } from "../kernel/src/tools.js";
+import { chooseRouterModel, type RouterPolicy, routerPolicy } from "./router.js";
 import { type RunStartRecord, type SessionStore, sessionMessages } from "./session.js";
 import { createTraceWriter, type TraceInput, type TraceUsage, type TraceWriter } from "./trace.js";
 
@@ -146,6 +148,8 @@ export interface Runtime {
   readonly runner: AgentRunner;
   /** Provider/model pair a session is pinned to, after the plugin config overrides are applied. */
   readonly modelIdentity: ModelIdentity;
+  /** The routing policy, or `undefined` when routing is off. A session pins the model its task chose. */
+  readonly router: RouterPolicy | undefined;
   close(): Promise<void>;
 }
 
@@ -231,6 +235,14 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
     ["tool:core", "tools-basic"],
     ["agent:runner-factory", "loop-react"],
   ]);
+  // Routing is off unless the plugin block says so, and off means byte-for-byte the runner below.
+  const routing: RouterPolicy | undefined =
+    provider === "openai"
+      ? routerPolicy({
+          model: { model: config.model.model },
+          plugin: pluginConfig(config, modelPlugin.openai),
+        })
+      : undefined;
   const capability = <T>(service: string): T => {
     if (!registry.services.has(service)) {
       throw new Error(
@@ -280,6 +292,7 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
     trace,
     budget: configBudget(config),
     modelIdentity: { provider, model: config.model.model },
+    router: routing,
     get model() {
       return capability<ModelProvider>(`model:${provider}`);
     },
@@ -288,6 +301,21 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
     },
     get runner() {
       const factory = capability<AgentRunnerFactory>("agent:runner-factory");
+      if (routing !== undefined) {
+        // The decision needs the task, so the provider, the model identity, and the trace envelope are
+        // all resolved per run instead of once per runtime. Every run records the model it really used.
+        return {
+          async run(task: string, options?: AgentRunOptions) {
+            const decision = chooseRouterModel(task, routing);
+            const strong = decision.model === routing.strongModel;
+            const model = capability<ModelProvider>(`model:${provider}${strong ? "-strong" : ""}`);
+            const runner = factory(model, decision.model);
+            return (
+              trace === undefined ? runner : tracedRunner(runner, record, { provider, model: decision.model })
+            ).run(task, options);
+          },
+        };
+      }
       // The model name travels with the provider so a per-model price map is reachable at the loop.
       const runner = factory(capability<ModelProvider>(`model:${provider}`), config.model.model);
       // Off means the very same runner the loop has always been handed: no wrapper, no extra option.
@@ -307,6 +335,11 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
 export interface SessionAgent {
   readonly modelIdentity: ModelIdentity;
   readonly runner: AgentRunner;
+  /**
+   * Present only while routing is on. A session then pins the model its own task chose, not the
+   * configured one, so a stored transcript is never resumed under a model that did not produce it.
+   */
+  readonly router?: RouterPolicy;
   /** Forwarded to the runner when set; a session never stores it and a resume never restores it. */
   readonly budget?: BudgetPolicy;
 }
@@ -387,7 +420,15 @@ function tightestLimits(
 export async function runSession(agent: SessionAgent, options: SessionRunOptions): Promise<SessionRun> {
   // Live getter, resolved before any write: a missing capability leaves no orphan session behind.
   const runner = agent.runner;
-  const { modelIdentity } = agent;
+  // With routing on, the pinned identity is the model this task routes to. It is the same pure
+  // decision the runner makes, so a resume compares like with like instead of the configured model.
+  const modelIdentity: ModelIdentity =
+    agent.router === undefined
+      ? agent.modelIdentity
+      : {
+          provider: agent.modelIdentity.provider,
+          model: chooseRouterModel(options.task, agent.router).model,
+        };
   const resumed =
     options.sessionId === undefined
       ? undefined
