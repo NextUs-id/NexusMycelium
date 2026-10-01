@@ -17,6 +17,7 @@ Butuh Node.js `^22.12.0 || ^24.0.0 || >=26.0.0` dan pnpm `12.6.0` sesuai `packag
 - `node dist/src/cli.js run` menjalankan satu task mock offline bounded dan mencetak JSON.
 - `node dist/src/cli.js run 'Write hello.txt with content "hello" and read hello.txt'` memakai tool; `fs.write` harus diizinkan secara eksplisit di config.
 - `node dist/src/cli.js serve` menjalankan dashboard lokal di `http://127.0.0.1:18765/task-dashboard.html`; API dan SSE tersedia di endpoint lokal yang sama.
+- `node dist/src/cli.js report` mencetak tabel biaya dan token per task yang dibaca dari trace log (`trace.enabled: true`); run tanpa laporan usage tampil `unavailable`, model tanpa harga tampil `unpriced`, tidak pernah `0`.
 - `corepack pnpm bench:smoke` menjalankan smoke task melalui `createRuntime`, config, dan runner yang setara CLI.
 - `corepack pnpm bench:20` adalah command kanonik benchmark mock 20-task; command ini melakukan build lalu menjalankan runner tanpa nested `pnpm`.
 

@@ -440,6 +440,49 @@ dinyatakan persis ("tidak cocok di edit ke-2") tanpa menebak diff yang ambigu.
 - Kalau 7.x memakai `edit_text` untuk patch `agent-made`, gate 7.1 yang membuktikan patch buruk
   otomatis ditolak tetap belum ada; yang ada sekarang hanya tool-nya.
 
+## Laporan biaya dan token per tugas dan batasnya terhadap Plugin API (Task 4.6)
+
+Task 4.6 menambah satu perintah CLI, `nexus report`, yang membaca **trace log yang sudah ada** dan
+mencetak tabel biaya dan token per task. Tidak ada ledger baru, tidak ada persistence baru, dan
+`schemaVersion` session maupun trace tidak naik.
+
+### Yang masuk ke source, dan sifatnya
+
+- **`src/report.ts`** membaca `trace.jsonl` dengan `traceRecordSchema` yang sama seperti writer-nya,
+  lalu memasangkan setiap `run-end` dengan `run-start` paling reciente di atasnya. Pasangan itu
+  **posisional**: `runId` milik writer, bukan milik satu run, jadi tidak ada yang dikarang dari sana.
+- **Harga diambil dari config**, bukan dari mana saja: peta `budget.prices` dibaca lewat
+  `resolveBudgetPolicy` kernel, sehingga harga yang dipakai report adalah harga yang akan diterima
+  guard. Peta itu dibaca **entah apakah guard-nya aktif** — pertanyaannya muncul setelah kejadian.
+- **Biaya dihitung sebagai mikro-USD bulat** dengan aritmetika yang sama dengan yang dipakai loop,
+  jadi pembulatan float tidak bisa membuat biaya terlihat lebih murah atau lebih mahal.
+- **Dua hal yang ditolak secara eksplisit**: run tanpa laporan usage dihitung `unavailable`, bukan `0`;
+  model tanpa entri harga dihitung `unpriced`, bukan gratis. Keduanya masuk ke hitungan tersendiri dan
+  keduanya punya baris penjelasan di output.
+- **Perintah ini hanya membaca.** Ia me-resolve config, membaca trace, lalu mencetak. Tidak
+  menjalankan runtime, tidak menulis record, tidak memanggil model.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Usage hanya dihitung ketika guard aktif.** `plugins/loop-react` hanya mengumpulkan counter saat
+  policy budget aktif, jadi run yang dibuat dengan `budget.enabled: false` **tidak punya angka sama
+  sekali** dan barisnya `unavailable`. That's bukan bug report; itu bentuk data yang ada.
+- **Tidak ada kolom cache-read.** `TraceUsage` hanya membawa tiga penghitung, jadi `cachedTokens`
+  4.1b tidak pernah sampai ke trace dan tidak bisa dilaporkan. Baris bawah output menyebut ini.
+- **Tidak ada cohort atau grafik.** Ini tabel teks untuk satu trace log, bukan dashboard, dan tidak
+  ada penyaringan per rentang waktu, per model, atau per status.
+- **Tidak ada pembulatan ke atas atau ke bawah** yang licit: nilai yang dicetak adalah hasil hitungan,
+  dan `unavailable`/`unpriced` tidak pernah menjadi `0`.
+- **Tidak ada suite live.** Semua test memakai stub offline; nol request sungguhan ke 9Router.
+
+### Aturan untuk task berikutnya
+
+- Kalau 4.5 router atau 4.6 lanjutan butuh biaya per model dari riwayat, sumbernya tetap trace log.
+  Jangan menambah ledger kedua; kalau usage perlu lebih detail, itu **perubahan kontrak trace** dengan
+  migration note, bukan field baru yang diam-diam.
+- Kalau sebuah task membuat angka "hemat", nyatakan dimensinya: karakter, token, atau waktu. Laporan
+  ini hanya memenuhi karakter dan token yang benar-benar dilaporkan gateway.
+
 ## Test dan CI secret-free
 
 

@@ -4,8 +4,10 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentLimits, AgentStepRecord } from "../kernel/src/agent.js";
+import { resolveBudgetPolicy } from "../kernel/src/agent.js";
 import { resolveConfig } from "../kernel/src/config.js";
 import type { ModelMessage } from "../kernel/src/model.js";
+import { readCostReport, renderReport } from "./report.js";
 import { createRuntime, type Runtime } from "./runtime.js";
 import { createSessionStore, type SessionRecord, type SessionStore, sessionMessages } from "./session.js";
 
@@ -19,6 +21,8 @@ interface CliOptions {
   /** Opt-in with --sandbox: ask the host for a baseline snapshot and a restore once the run is over. */
   snapshot?: boolean;
   task: string[];
+  /** Test-only: read this trace file instead of the writer's default path. The CLI never sets it. */
+  tracePath?: string;
 }
 
 /** The stored session a run appends to. `provider`/`model` come from history and must still match. */
@@ -79,12 +83,14 @@ Usage:
   node dist/src/cli.js session resume <id> <task> [--root PATH] [--model mock|openai]
   node dist/src/cli.js session fork <id> <newId> [atStep]
   node dist/src/cli.js serve [--root PATH]
+  node dist/src/cli.js report [--root PATH]
   node dist/src/cli.js --help
 
 Commands:
   run      Run one bounded agent task and print a JSON result.
   session  list, resume, or fork the stored sessions. Omitting atStep forks the whole session.
   serve    Serve the realtime task dashboard on 127.0.0.1:18765.
+  report   Print the cost and token report read from the trace log.
 
 The default model is offline mock. Network and shell permissions deny by default.
 
@@ -324,6 +330,28 @@ async function serve(options: CliOptions): Promise<number> {
   });
 }
 
+/**
+ * The report is a read: it resolves config for the price map, then reads the trace log. It never
+ * starts a runtime, never appends a record, and never runs a model.
+ */
+async function report(options: CliOptions, tracePath?: string): Promise<number> {
+  const root = resolve(options.root ?? repoRoot());
+  const config = await resolveConfig(root);
+  // Priced through the kernel's own policy builder, so a price the report applies is one the guard
+  // would have accepted. Read whether or not the guard is armed: the question is asked after the fact.
+  const prices = resolveBudgetPolicy({
+    enabled: true,
+    ...(config.budget.prices === null ? {} : { prices: config.budget.prices }),
+  }).prices;
+  const result = await readCostReport({ ...(tracePath === undefined ? {} : { path: tracePath }), prices });
+  if (!result.ok) {
+    process.stderr.write(`${result.message}\n`);
+    return 1;
+  }
+  process.stdout.write(`${renderReport(result.report)}\n`);
+  return 0;
+}
+
 export async function main(
   argv: readonly string[] = process.argv.slice(2),
   host?: SandboxHost,
@@ -341,6 +369,7 @@ export async function main(
   }
   if (command === "session") return sessionCommand(options);
   if (command === "serve") return serve(options);
+  if (command === "report") return report(options, options.tracePath);
   throw new Error(`unknown command: ${command ?? "(missing)"}`);
 }
 

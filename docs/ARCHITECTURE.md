@@ -916,6 +916,58 @@ output.
 6. **Dipalsukan**: menghapus penjaga `matches > 1` menggagalkan test 3; menghapus penjaga
    `matches === 0` menggagalkan test 2.
 
+## Status Task 4.6 — Laporan biaya dan token per tugas
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 90 files`, `tsc --noEmit` bersih, **515 test di 36 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, dan `git diff --check` tanpa output. 515 = 507 (4.4) + 7 test report +
+1 test CLI. `bench:20`/`bench:accept` tidak dijalankan ulang dan tidak boleh dikutip sebagai
+achievement 4.6: canonical benchmark memakai provider `mock` yang tidak melaporkan usage, jadi report
+akan kosong untuk semua task-nya.
+
+Task ini tidak menambah persistence sama sekali. Sumber angkanya adalah **trace log 3.4** yang sudah
+menulis `run-start` (provider dan model) serta `run-end` (status, langkah, tool call, dan tiga
+penghitung token saat gateway melaporkannya).
+
+### Bentuk yang sudah ada di source
+
+- **`src/report.ts`** dengan `readCostReport()` dan `renderReport()`: output teks, tanpa dependency.
+- **`nexus report [--root PATH]`** di `src/cli.ts`. Perintah ini hanya membaca: resolve config untuk
+  peta harga, baca trace, cetak tabel. Tidak menjalankan runtime, tidak menulis record, tidak
+  memanggil model.
+- **Pasangan run adalah posisional** — `runId` milik writer, bukan milik satu run, jadi setiap
+  `run-end` mengambil `run-start` terbaru di atasnya dan `run-end` yang tidak punya pasangan
+  **dihitung**, bukan diperbaiki.
+- **Harga lewat `resolveBudgetPolicy` kernel**, dibaca entah apakah guard aktif, dan biaya dihitung
+  sebagai mikro-USD bulat dengan aritmetika yang sama dengan loop.
+
+### Yang TIDAK ada di 4.6
+
+- **Usage hanya dihitung saat guard aktif** (`budget.enabled: true`). Run yang dibuat dengan guard
+  mati tidak punya angka dan barisnya `unavailable` — itu bentuk datanya, bukan kegagalan report.
+- **Tidak ada kolom cache-read**: `TraceUsage` hanya membawa tiga penghitung, jadi `cachedTokens` 4.1b
+  tidak pernah sampai ke trace.
+- **Tidak ada filter** per rentang waktu, model, atau status; tidak ada grafik; bukan dashboard.
+- **Tidak ada ledger kedua dan tidak ada persistence baru.** Kalau usage perlu lebih detail, itu
+  perubahan kontrak trace dengan migration note.
+- **Tidak ada suite live**: semua test memakai stub offline.
+
+### Kriteria falsifiable 4.6
+
+1. "prices a run with the model its own run-start recorded" — 1000×0.15 + 500×0.6 = 450 mikro-USD
+   (`src/report.test.ts`).
+2. "counts a run that reported no usage as unavailable, never as zero" dan "counts a model with no
+   price as unpriced, never as free".
+3. "counts a refused record and an unpaired run-end instead of repairing either".
+4. "refuses a log with no finished run, and a log that is not there" — dua bentuk penolakan dengan
+   pesan yang menyebut cara mengaktifkan trace.
+5. "reports a real run: the runtime writes the trace and the report reads it back" — closure lewat
+   `createRuntime` + stub fetch yang melaporkan 2000/500/2500 token, guard aktif, lalu report membaca
+   file trace asli dan menghitung 600 mikro-USD.
+6. "prints the report read from the default trace path, and refuses when there is none"
+   (`src/cli.test.ts`) — exit 1 tanpa file, exit 0 dengan isi.
+   **Dipalsukan**: mengubah `unavailable`/`unpriced` menjadi `0` menggagalkan test 2.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

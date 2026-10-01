@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -558,5 +558,82 @@ describe("CLI sandbox snapshot", () => {
       "run --sandbox requires a task",
     );
     expect(hostRun).not.toHaveBeenCalled();
+  });
+
+  it("prints the report read from the default trace path, and refuses when there is none", async () => {
+    const home = await mkdtemp(join(tmpdir(), "nexus-cli-report-home-"));
+    const root = await mkdtemp(join(tmpdir(), "nexus-cli-report-root-"));
+    const written: string[] = [];
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((value: unknown) => {
+      written.push(String(value));
+      return true;
+    });
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      vi.stubEnv("HOME", home);
+      vi.stubEnv("USERPROFILE", home);
+      await writeFile(
+        join(root, "user-config.yaml"),
+        [
+          "budget:",
+          "  prices:",
+          "    gpt-4o-mini:",
+          "      inputUsdPerMillionTokens: 0.15",
+          "      outputUsdPerMillionTokens: 0.6",
+        ].join("\n"),
+        "utf8",
+      );
+      await mkdir(join(root, "config"), { recursive: true });
+      await mkdir(join(root, "user"), { recursive: true });
+      await writeFile(join(root, "config", "default.yaml"), "model:\n  provider: mock\n", "utf8");
+      await writeFile(
+        join(root, "user", "config.yaml"),
+        await readFile(join(root, "user-config.yaml"), "utf8"),
+        "utf8",
+      );
+
+      // No trace log yet: the command says what to do instead of printing an empty table.
+      expect(await main(["report", "--root", root])).toBe(1);
+      expect(written).toEqual([]);
+      expect(err.mock.calls.join("")).toContain("trace:");
+
+      await mkdir(join(home, ".config", "nexus", "user", "traces"), { recursive: true });
+      await writeFile(
+        join(home, ".config", "nexus", "user", "traces", "trace.jsonl"),
+        [
+          JSON.stringify({
+            schemaVersion: 1,
+            type: "run-start",
+            ts: "2026-09-27T00:00:00.000Z",
+            seq: 1,
+            runId: "0123456789abcdef",
+            provider: "openai",
+            model: "gpt-4o-mini",
+          }),
+          JSON.stringify({
+            schemaVersion: 1,
+            type: "run-end",
+            ts: "2026-09-27T00:00:01.000Z",
+            seq: 2,
+            runId: "0123456789abcdef",
+            status: "completed",
+            steps: 2,
+            toolCalls: 1,
+            usage: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 },
+          }),
+        ].join("\n"),
+        "utf8",
+      );
+      expect(await main(["report", "--root", root])).toBe(0);
+      const text = written.join("");
+      expect(text).toContain("gpt-4o-mini");
+      expect(text).toContain("0.000450");
+    } finally {
+      out.mockRestore();
+      err.mockRestore();
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });

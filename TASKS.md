@@ -211,6 +211,18 @@ Sebelum mengerjakan task, ikuti `docs/AGENT_WORKFLOW.md`. Satu task memakai satu
 - [ ] **4.5 (M)** Router model murah/mahal
 - [ ] **4.6 (S)** Dashboard CLI biaya dan token per tugas. ✓ ada baseline sebelum/sesudah
 
+- [x] **4.6 (S)** Dashboard CLI biaya dan token per tugas. ✓ ada baseline sebelum/sesudah
+  - **Status 2026-09-27 — ditutup setelah full gate hijau pada working tree yang sama:** `corepack pnpm check` (`Checked 90 files`, `tsc --noEmit` bersih, **515 test di 36 file** vitest + 2 `node --test`), `corepack pnpm build` exit 0, `git diff --check` tanpa output. 515 = 507 (4.4) + 7 test report + 1 test CLI. `bench:20`/`bench:accept` tidak dijalankan ulang dan tidak boleh dikutip sebagai achievement 4.6: provider `mock` tidak melaporkan usage, jadi report akan kosong untuk semua task kanonik.
+  - **Bentuk.** `src/report.ts` + perintah `nexus report [--root PATH]`. **Tidak ada persistence baru dan tidak ada ledger kedua**: sumbernya trace log 3.4 yang sudah menulis `run-start` (provider, model) dan `run-end` (status, langkah, tool call, tiga token saat gateway melapor). Perintah ini hanya membaca — resolve config untuk peta harga, baca trace, cetak tabel.
+  - **✓ ada baseline sebelum/sesudah** — baseline angkanya sudah ada dari 4.2d (`bench:compaction`, 99,17% karakter) dan 4.4 (`bench:edit`, 78,41% karakter argumen), dan sekarang ada pembacanya lewat CLI. Yang perlu dibaca: angka harness itu **karakter**, sedangkan angka report ini **token yang dilaporkan gateway** — dua dimensi berbeda, keduanya dinyatakan.
+  - **terpenuhi** — harga dan identitas model: "prices a run with the model its own run-start recorded" — 1000×0.15 + 500×0.6 = 450 mikro-USD, dihitung bulat (`src/report.test.ts`).
+  - **terpenuhi** — nol tidak pernah mengarang: "counts a run that reported no usage as unavailable, never as zero" dan "counts a model with no price as unpriced, never as free". **Dipalsukan**: mengubah keduanya menjadi `0` menggagalkan dua test itu.
+  - **terpenuhi** — record rusak dihitung, bukan diperbaiki: "counts a refused record and an unpaired run-end instead of repairing either".
+  - **terpenuhi** — dua bentuk penolakan: "refuses a log with no finished run, and a log that is not there", dengan pesan yang menyebut cara mengaktifkan trace.
+  - **terpenuhi** — closure sungguhan: "reports a real run: the runtime writes the trace and the report reads it back" — `createRuntime` + stub fetch yang melaporkan 2000/500/2500 token, guard aktif, lalu report membaca file trace asli dan menghitung 600 mikro-USD. Dan "prints the report read from the default trace path, and refuses when there is none" (`src/cli.test.ts`).
+  - **Tidak diklaim** — **usage hanya dihitung saat `budget.enabled: true`**: run dengan guard mati tidak punya angka dan barisnya `unavailable`. **Tidak ada kolom cache-read** karena `TraceUsage` hanya membawa tiga penghitung, jadi `cachedTokens` 4.1b tidak pernah sampai trace. Tidak ada filter per waktu/model/status, tidak ada grafik, dan ini bukan dashboard. Tidak ada suite live.
+  - Detail di `docs/ARCHITECTURE.md` ("Status Task 4.6") dan `docs/PLUGIN_API.md` ("Laporan biaya dan token per tugas dan batasnya terhadap Plugin API (Task 4.6)").
+
 🏁 **M3:** bukti angka penghematan di benchmark.
 
 ## Fase 5 — Ekstensi standar
