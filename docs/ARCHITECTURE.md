@@ -1021,6 +1021,51 @@ memilih sebelum run tidak.
    **Dipalsukan**: memaksa router selalu memilih model murah menggagalkan test 4 dan 5; mencatat model
    config di trace menggagalkan test 4; memundialkan identitas sesi ke model config menggagalkan test 6.
 
+## Status Task 5.2 — Skills loader
+
+**Status 2026-09-27: ditutup** setelah `corepack pnpm check` hijau pada working tree yang sama
+(`Checked 94 files`, `tsc --noEmit` bersih, **534 test di 39 file** + 2 `node --test`),
+`corepack pnpm build` exit 0, dan `git diff --check` tanpa output. `bench:20`/`bench:accept` tidak
+dijalankan ulang dan tidak boleh dikutip sebagai achievement 5.2: canonical benchmark memakai
+`model-mock` pada root sementara tanpa folder `skills/`, jadi ia hanya membuktikan index kosong tidak
+mengubah apa pun — dan itu memang salah satu hal yang dibuktikan.
+
+### Bentuk yang sudah ada di source
+
+- **`src/skills.ts`** — `discoverSkills(root)`, `skillIndexText()`, `withSystemSkills()`.
+- **Dua scope**: `skills/<name>/SKILL.md` dan `user/skills/<name>/SKILL.md`; official menang nama.
+- **`skills/nexus-git/SKILL.md`** sebagai skill contoh yang nyata, isinya konvensi Git dan SOP gate repo
+  ini — dogfood, dan bukti bahwa discovery membaca file sungguhan.
+- **Injeksi lewat provider di `src/runtime.ts`**, di kedua jalur: run biasa dan run yang dirutekan
+  (4.5). Nol perubahan pada `loop-react` dan nol perubahan kernel.
+
+### Yang TIDAK ada di 5.2
+
+- **Tidak ada `SkillRegistry`, `SkillResolver`, `SkillExecutor`, dan tidak ada `scripts/` di dalam
+  skill.** Satu-satunya yang dimuat adalah index dan isi file.
+- **Tidak ada pencarian skill terhadap task** dan tidak ada metrik pemakaian skill, jadi "model membuka
+  skill yang relevan" adalah sesuatu yang harus ditebak, bukan yang bisa diukur.
+- **Tidak ada cache, tidak ada hot reload, tidak ada service `skills:index`**, dan tidak ada config key.
+- **Index tidak masuk ke transkrip yang tersimpan**: ia injeksi prompt-time, jadi session replay tidak
+  memainkannya.
+
+### Kriteria falsifiable 5.2
+
+1. "loads an official skill with its name, description, and body"; "loads a user skill, and refuses a
+   user skill that shadows an official one" (`src/skills.test.ts`).
+2. "refuses a skill whose frontmatter lies, and says which rule broke" dan "refuses a symlink, a
+   traversal, and an oversized file".
+3. "renders a stable index the loop can append to its system prompt" — termasuk `skillIndexText([]) === ""`.
+4. "treats the body as text: no interpolation, no execution, no code".
+5. "appends the index to the system message, once, and never to a resumed transcript" dan "hands the
+   provider straight back when the repo has no skills".
+6. "tells the model about the repo skills in a real run, without storing the index in the transcript"
+   dan "tells the model about the repo skills on the routed path too" (`src/runtime.test.ts`).
+   **Dipalsukan**: mematikan pembungkus di jalur non-router menggagalkan test pertama, di jalur router
+   menggagalkan test kedua, membiarkan `name` tidak cocok dengan direktori menggagalkan test
+   frontmatter, `strict` → `passthrough` menggagalkan test yang sama, dan membolehkan shadow
+   menggagalkan test shadow.
+
 ## Permission dan trust
 
 Manifest permissions adalah requested capabilities, bukan grant otomatis. `PermissionGate` menerapkan `allow`, `ask`, atau `deny`, dengan default `fs.read: allow`, `fs.write: deny`, `shell: deny`, dan `network: deny`; `ask` tanpa callback approval ditolak.

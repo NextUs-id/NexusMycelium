@@ -16,6 +16,7 @@ import type { ModelMessage, ModelProvider, ModelUsage } from "../kernel/src/mode
 import type { ToolRegistry } from "../kernel/src/tools.js";
 import { chooseRouterModel, type RouterPolicy, routerPolicy } from "./router.js";
 import { type RunStartRecord, type SessionStore, sessionMessages } from "./session.js";
+import { discoverSkills, skillIndexText, withSystemSkills } from "./skills.js";
 import { createTraceWriter, type TraceInput, type TraceUsage, type TraceWriter } from "./trace.js";
 
 const logger = {
@@ -228,6 +229,11 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
   for (const plugin of await discoverPlugins(new URL("../plugins/", import.meta.url))) {
     registry.register(plugin);
   }
+  // Skills are read by the host, not by a plugin: discovery needs the repo root, and the index is a
+  // fact about this checkout. A repo with no skills resolves to an empty string, which the provider
+  // wrapper below hands back unchanged, so the loop's system prompt stays byte-identical.
+  const skills = await discoverSkills(root);
+  const skillIndex = skillIndexText(skills.skills);
 
   /** Required capability -> the plugin that must own it. Missing means fail-closed, never a fallback. */
   const owners = new Map<string, string>([
@@ -308,7 +314,10 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
           async run(task: string, options?: AgentRunOptions) {
             const decision = chooseRouterModel(task, routing);
             const strong = decision.model === routing.strongModel;
-            const model = capability<ModelProvider>(`model:${provider}${strong ? "-strong" : ""}`);
+            const model = withSystemSkills(
+              capability<ModelProvider>(`model:${provider}${strong ? "-strong" : ""}`),
+              skillIndex,
+            );
             const runner = factory(model, decision.model);
             return (
               trace === undefined ? runner : tracedRunner(runner, record, { provider, model: decision.model })
@@ -317,7 +326,10 @@ export async function createRuntime(options: RuntimeOptions = {}): Promise<Runti
         };
       }
       // The model name travels with the provider so a per-model price map is reachable at the loop.
-      const runner = factory(capability<ModelProvider>(`model:${provider}`), config.model.model);
+      const runner = factory(
+        withSystemSkills(capability<ModelProvider>(`model:${provider}`), skillIndex),
+        config.model.model,
+      );
       // Off means the very same runner the loop has always been handed: no wrapper, no extra option.
       return trace === undefined
         ? runner

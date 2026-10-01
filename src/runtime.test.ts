@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -844,6 +844,110 @@ describe("structured trace host", () => {
       await runtime.close();
       await rm(root, { recursive: true, force: true });
       await rm(logRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the model about the repo skills in a real run, without storing the index in the transcript", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-runtime-skills-"));
+    try {
+      await mkdir(join(root, "skills", "house-style"), { recursive: true });
+      await writeFile(
+        join(root, "skills", "house-style", "SKILL.md"),
+        "---\nname: house-style\ndescription: How this repo writes prose.\n---\nBe plain.\n",
+        "utf8",
+      );
+      await mkdir(join(root, "config"), { recursive: true });
+      await mkdir(join(root, "user"), { recursive: true });
+      await writeFile(
+        join(root, "config", "default.yaml"),
+        [
+          "model:",
+          "  provider: openai",
+          "  model: gpt-4o-mini",
+          "  apiKeyFile: user/secrets/provider.key",
+        ].join("\n"),
+        "utf8",
+      );
+      await writeFile(join(root, "user", "config.yaml"), "permissions:\n  network: allow\n", "utf8");
+      await writeDummyApiKey(root);
+      const fetchProbe = stubOpenAIFetch("done");
+      const runtime = await createRuntime({ root });
+      const transcripts: ModelMessage[][] = [];
+      try {
+        const result = await runtime.runner.run("say hello", {
+          onStep: (record) => {
+            transcripts.push(record.messages.slice());
+          },
+        });
+        expect(result.status).toBe("completed");
+        // The gateway request is the proof the model was told: the index rides the system message.
+        const sent = fetchProbe.body() as { messages: { role: string; content: string }[] };
+        const system = sent.messages.find((message) => message.role === "system");
+        expect(system?.content).toContain("Available skills");
+        expect(system?.content).toContain(
+          "- house-style — How this repo writes prose. (skills/house-style/SKILL.md)",
+        );
+        // The body is never inlined, and the stored transcript stays free of the index.
+        expect(JSON.stringify(sent)).not.toContain("Be plain.");
+        expect(JSON.stringify(transcripts)).not.toContain("Available skills");
+      } finally {
+        await runtime.close();
+        fetchProbe.restore();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the model about the repo skills on the routed path too", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nexus-runtime-skills-route-"));
+    try {
+      await mkdir(join(root, "skills", "house-style"), { recursive: true });
+      await writeFile(
+        join(root, "skills", "house-style", "SKILL.md"),
+        "---\nname: house-style\ndescription: How this repo writes prose.\n---\nBe plain.\n",
+        "utf8",
+      );
+      await mkdir(join(root, "config"), { recursive: true });
+      await mkdir(join(root, "user"), { recursive: true });
+      await writeFile(
+        join(root, "config", "default.yaml"),
+        ["model:", "  provider: openai", "  model: cheap-1", "  apiKeyFile: user/secrets/provider.key"].join(
+          "\n",
+        ),
+        "utf8",
+      );
+      await writeFile(
+        join(root, "user", "config.yaml"),
+        [
+          "permissions:",
+          "  network: allow",
+          "plugins:",
+          "  model-openai:",
+          "    router:",
+          "      enabled: true",
+          "      strong: strong-1",
+          "      maxTaskChars: 10",
+        ].join("\n"),
+        "utf8",
+      );
+      await writeDummyApiKey(root);
+      const fetchProbe = stubOpenAIFetch("done");
+      const runtime = await createRuntime({ root });
+      try {
+        // A task past the threshold routes to the strong model; the index must ride that run too.
+        expect((await runtime.runner.run("x".repeat(20))).status).toBe("completed");
+        const sent = fetchProbe.body() as { model: string; messages: { role: string; content: string }[] };
+        expect(sent.model).toBe("strong-1");
+        expect(sent.messages.find((message) => message.role === "system")?.content).toContain(
+          "- house-style — How this repo writes prose.",
+        );
+      } finally {
+        await runtime.close();
+        fetchProbe.restore();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

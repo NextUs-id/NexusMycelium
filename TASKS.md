@@ -240,7 +240,19 @@ Sebelum mengerjakan task, ikuti `docs/AGENT_WORKFLOW.md`. Satu task memakai satu
 
 ## Fase 5 — Ekstensi standar
 - [ ] **5.1 (M)** MCP client
-- [ ] **5.2 (S)** Skills loader (SKILL.md)
+- [x] **5.2 (S)** Skills loader (SKILL.md)
+  - **Status 2026-09-27 — ditutup setelah full gate hijau pada working tree yang sama:** `corepack pnpm check` (`Checked 94 files`, `tsc --noEmit` bersih, **534 test di 39 file** vitest + 2 `node --test`), `corepack pnpm build` exit 0, `git diff --check` tanpa output. 534 = 527 + 5 test loader + 2 test runtime.
+  - **Bentuk.** `src/skills.ts`: discovery dua scope — official `skills/<name>/SKILL.md` dan user `user/skills/<name>/SKILL.md` — dengan frontmatter `name` + `description` yang `.strict()`. **Tanpa config key, tanpa perubahan kernel, tanpa tool baru.** Yang diinjeksi ke model hanya **index** (nama + deskripsi + path relatif); isi `SKILL.md` dibaca sendiri oleh model lewat `read_text` yang sudah ada.
+  - **Disuntik dari host, bukan lewat service.** Plugin hanya melihat service yang di-*own* plugin itu atau plugin yang di-*require*-nya (`allowedServiceOwners` di `kernel/src/registry.ts`), jadi `skills:index` milik host tidak akan terlihat tanpa perubahan kernel. Alternatifnya dipakai: `withSystemSkills()` membungkus `ModelProvider` di `src/runtime.ts` — seam yang sudah dipakai tracing, loop tidak disentuh, dan host tetap pemilik fakta "apa yang diketahui checkout ini".
+  - **Fail closed, dihitung, bukan diperbaiki.** Frontmatter hilang/berantakan, key asing, nama yang tidak cocok dengan direktori, nama bukan kebab-case, file > 64.000 byte, symlink, dan path keluar root semuanya **ditolak** dengan alasannya. Skill user yang namanya sama dengan official **ditolak** (`shadows an official skill`), bukan menimpa.
+  - **terpenuhi** — muat official/user, body, path relatif: "loads an official skill with its name, description, and body" dan "loads a user skill, and refuses a user skill that shadows an official one" (`src/skills.test.ts`).
+  - **terpenuhi** — penolakan beralasan: "refuses a skill whose frontmatter lies, and says which rule broke" (lima kasus) dan "refuses a symlink, a traversal, and an oversized file".
+  - **terpenuhi** — index stabil dan kosong berarti nol: "renders a stable index the loop can append to its system prompt" (`skillIndexText([]) === ""`).
+  - **terpenuhi** — body adalah teks, bukan kode: "treats the body as text: no interpolation, no execution, no code" — `${EVIL}` dan `<script>` bertahan utuh sebagai teks.
+  - **terpenuhi** — injeksi idempoten dan tidak mengarang system message: "appends the index to the system message, once, and never to a resumed transcript" plus "hands the provider straight back when the repo has no skills".
+  - **terpenuhi** — closure dua jalur: "tells the model about the repo skills in a real run, without storing the index in the transcript" dan "tells the model about the repo skills on the routed path too" (`src/runtime.test.ts`) — request gateway sungguhan memuat `- house-style — …`, isi body tidak ikut, dan **transkrip yang tersimpan tetap bersih** dari index. **Dipalsukan**: mematikan pembungkus di jalur non-router menggagalkan test pertama, di jalur router menggagalkan test kedua, `name` tidak harus cocok direktori menggagalkan test frontmatter, `strict` diganti `passthrough` menggagalkan test yang sama, dan membolehkan shadow menggagalkan test shadow.
+  - **Tidak diklaim** — **tidak ada `SkillRegistry`/`SkillResolver`/`SkillExecutor` dan tidak ada `scripts/` di dalam skill**: satu-satunya yang dimuat adalah index dan file `SKILL.md`. Skill tidak dieksekusi, tidak diimpor, tidak di-cache; discovery berjalan per runtime, dan repo tanpa `skills/` menghasilkan index kosong tanpa mengubah system prompt. Tidak ada pencarian/pencocokan skill terhadap task — model yang memutuskan, dengan konsekuensinya bisa saja tidak pernah membaca satu pun skill.
+  - Detail di `docs/ARCHITECTURE.md` ("Status Task 5.2") dan `docs/PLUGIN_API.md` ("Skills loader dan batasnya terhadap Plugin API (Task 5.2)").
 - [ ] **5.3 (S)** Pembaca `AGENTS.md`
 - [ ] **5.4 (L)** Memori v1: vault Markdown + `[[wikilink]]` + indeks SQLite
 

@@ -533,6 +533,49 @@ sebelum run — tidak bisa di tengah percakapan tanpa mengubah kontrak kernel.
 - Kalau 4.5b menambah escalation setelah gagal, ia harus mencatat **dua run** (dua `run-start`), bukan
   satu run dengan dua model, supaya atribusi biaya di trace dan report tidak berbohong.
 
+## Skills loader dan batasnya terhadap Plugin API (Task 5.2)
+
+Task 5.2 menambah **satu modul host**, `src/skills.ts`, dan satu pembungkus `ModelProvider`. Tidak ada
+tool baru, tidak ada config key, tidak ada perubahan kernel, dan tidak ada service baru.
+
+### Yang masuk ke source, dan sifatnya
+
+- **Discovery dua scope**: `skills/<name>/SKILL.md` (official) dan `user/skills/<name>/SKILL.md` (user).
+  Frontmatter `name` + `description` `.strict()`; nama harus kebab-case **dan harus sama dengan nama
+  direktorinya**; file di atas 64.000 byte, symlink, dan path keluar root ditolak.
+- **Official menang nama**: skill user yang namanya sama dengan official **ditolak** dengan alasan
+  `shadows an official skill` dan dihitung, bukan memuat isinya.
+- **Index, bukan isi.** `skillIndexText()` menghasilkan `Available skills (read the SKILL.md file with
+  read_text to use one):` diikuti satu baris per skill berisi nama, deskripsi, dan path relatif. Isi
+  `SKILL.md` tidak pernah masuk ke prompt; model membacanya sendiri dengan `read_text` yang sudah ada.
+- **Injeksi lewat provider, bukan lewat capability.** `withSystemSkills()` membungkus provider di
+  `src/runtime.ts`. Alasannya sederhana: plugin hanya melihat service yang
+  di-*own* plugin itu atau plugin yang di-*require*-nya (`allowedServiceOwners`), jadi service milik host
+  tidak terlihat tanpa perubahan kernel. Loop tidak disentuh sama sekali.
+- **Idempoten dan tidak mengarang**: system message yang sudah memuat index diteruskan utuh, dan
+  transcript tanpa system message (resume) tidak mendapat system message baru.
+
+### Batas yang tetap berlaku, dan tidak boleh ditulis sebagai kemampuan
+
+- **Skill tidak dieksekusi dan tidak diimpor.** Tidak ada `scripts/`, tidak ada `SkillExecutor`, tidak
+  ada pencatatan penggunaan skill. Yang dimuat hanya teks file.
+- **Tidak ada pencarian skill terhadap task.** Tidak ada skoring, ranking, atau `SkillResolver`; index
+  ditawarkan ke model dan keputusan membaca ada padanya. Konsekuensi jujurnya: model bisa saja tidak
+  pernah membuka satu pun skill, dan tidak ada metrik yang mengukur itu.
+- **Tidak ada cache dan tidak ada hot reload.** Discovery berjalan sekali per runtime; skill baru
+  butuh runtime baru.
+- **Transkrip yang tersimpan tidak memuat index.** Index adalah injeksi prompt-time, jadi session
+  replay tidak memainkannya ulang — yang tersimpan tetap system message loop apa adanya.
+- **Frontmatter yang gagal YAML di-parse boleh lewat jalur `key: value`, bukan lewat lenient parsing.**
+  Jalur itu hanya menerima baris `name:` dan `description:`, dan hasilnya tetap masuk schema strict.
+
+### Aturan untuk task berikutnya
+
+- Kalau suatu task menambah eksekusi skill atau registry skill, itu task terpisah dengan batas
+ ，eksekusi kode dari konten repo adalah perubahan permukaan keamanan yang besar.
+- Kalau 5.3 memakai hierarki `AGENTS.md`, ia harus berbagi aturan scope yang sama dengan loader ini:
+  official menang nama, file di luar root ditolak, dan setiap penolakan dihitung.
+
 ## Test dan CI secret-free
 
 
