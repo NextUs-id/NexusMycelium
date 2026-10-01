@@ -289,5 +289,63 @@ Batasan: jangan ubah kernel/ kecuali disebut; tambahkan tes
 Output: ringkasan perubahan + hasil tes
 ```
 
+## Fase 9 — Multi-agent foundation (P0, belum ada sama sekali)
+
+Bagian ini hasil audit source 2026-09-27 terhadap permintaan multi-agent: **subagent runtime, state
+machine agent, task DAG, execution scheduler, agent messaging, integrator, context broker, dan
+confidence evidence-based tidak ada di source** — yang ada hanya parallel *tool call* (4.3) dan
+sandbox process/workspace (3.1). Bus event yang ada (`kernel/src/events.ts`) katalognya hanya
+`plugin:loaded` dan `plugin:unloaded`, jadi orchestrator butuh bus sendiri dan **tidak** boleh menyalahgunakan bus plugin.
+
+**Nomor tidak dirombak.** Fase 5/6/7/8 tetap seperti sekarang supaya referensi di `docs/`,
+`TASKS.md`, dan pesan commit tidak berubah; urutan eksekusi yang baru ditulis di bagian "Urutan awal
+yang disarankan" sebagai urutan pilihan, bukan sebagai penomoran baru.
+
+- [ ] **9.1 (L)** Runtime event envelope universal. Bus kedua di luar bus plugin lifecycle, dengan amplop tertutup `{ type, seq, ts, sessionId, taskId?, agentId?, payload }`. ✓ payload tertutup dan ditolak kalau bawa prompt, transcript, path absolut, argumen tool, atau secret — sumbernya `src/trace.ts` redaction yang sudah ada; `grep -rn "RuntimeEvent" src/` harus menunjukkan file nyata
+- [ ] **9.2 (L)** Identitas dan state machine agent. `created → queued → planning → running → waiting-tool | waiting-agent | waiting-approval → verifying → completed | failed | cancelled`. ✓ transisi ilegal ditolak dan diuji per pasangan state; setiap transisi menurunkan satu event 9.1; tidak ada transisi yang bisa mengarang `completed` tanpa `verifying`
+- [ ] **9.3 (L)** Parent/child agent runtime. Child punya `agentId`, `parentAgentId`, session sendiri, workspace sendiri, dan budget sendiri. ✓ total budget anak tidak boleh melebihi budget parent (uji dengan dua anak yang masing-masing meminta hampir seluruh sisa); kegagalan child tidak boleh menimpa hasil parent; `parentAgentId` tidak bisa menunjuk agent yang tidak ada
+- [ ] **9.4 (L)** Task DAG. Node `{ id, goal, dependencies, state, assignedAgent? }`. Dependensi yang tidak dikenal ditolak saat build. ✓ siklus ditolak dengan menyebut node yang menutup siklus; node tanpa dependency bisa jalan; node dengan dependency gagal tidak boleh `ready` sampai semua dependency `completed`
+- [ ] **9.5 (L)** Execution scheduler. Ready queue, batas konkurensi, alokasi budget, pembatalan. ✓ jumlah run bersamaan tidak pernah melewati cap; pembatalan satu node tidak membatalkan node lain yang tidak bergantung padanya; queue kosong berakhir, tidak menggantung
+- [ ] **9.6 (M)** Agent messaging. Pesan parent↔child dengan payload tertutup dan berbatas ukuran. ✓ pesan di luar schema ditolak; pesan tidak pernah menjadi jalan melewati permission gate; urutan pesan ikut terpersistensi di session yang sama
+- [ ] **9.7 (L)** Worktree per agent (`git worktree` + branch sementara). 3.2 sekarang **sengaja** tidak punya worktree dan itu tertulis; task ini yang menutupnya. ✓ worktree agen berada di luar repo developer; `git worktree list` dari repo developer tidak pernah berubah karena satu agent; worktree yang rusak tidak boleh menimpa workspace utama
+- [ ] **9.8 (L)** Verifier jadi entitas runtime, bukan hanya benchmark. Agent tidak boleh menyatakan dirinya selesai; `VerificationResult { accepted, evidence[], failures[], confidence }`. ✓ `accepted: false` walau runner `status: completed` (pola negative test 2.6 yang sudah ada, dipromosikan ke runtime); kegagalan selalu menyebutnama file/artifact yang tidak cocok; `evidence` tidak pernah kosong saat `accepted: true`
+- [ ] **9.9 (M)** Integrator agent. Merge N branch agent, deteksi konflik, uji ulang. **Berinteraksi dengan 7.5** (`patches.lock` + merge 3 arah): Integrator memakai mekanisme yang 7.5 bangun, bukan implementasi kedua. ✓ konflik enak throws conflict, bukan merge bersih yang diam-diam menimpa; merge diulang dari `run --sandbox --snapshot` yang sudah ada
+- [ ] **9.10 (M)** Context broker: **seleksi** konteks (apa yang dimasukkan), berbeda dari **kompresi** konteks 4.2. ✓ pengambilan berbasis: broker tidak menambah token di luar plafon; sumber yang tidak ada tidak pernah diarang;PLICASI: `src/context/` punya `broker.ts`, `selector.ts`, `budget.ts`, `pack.ts` yang diuji terpisah dari `compactMessages()`
+- [ ] **9.11 (M)** Confidence berbasis bukti: `C = w1·R + w2·T + w3·B + w4·S + w5·J` dengan R/T/B/S = bukti requirements/test/build/security dan J = skor judge. **Membaca ulang 8.4**: 8.4 tidak boleh di-alone-kan sebagai "LLM bilang 0,91"; bobot harus eksplisit dan salah satu bukti yang hilang menurunkan confidence, bukan menambah. ✓ setiap komponen bukti absen → confidence turun; `J` saja tidak pernah menghasilkan confidence tinggi
+- [ ] **9.12 (L)** Sandbox backend: container atau OS (namespace, seccomp, cgroup). 3.1 punya gap yang tertulis dan **tidak** ada kotaknya; ini kotak penutupnya. ✓ backend tetap lewat API agent yang sama; container yang gagal start gagal closed, bukan jatuh ke host; `WorkspaceSandbox` tetap jadi default
+- [ ] **9.13 (L)** Host native (Rust) untuk PTY, OS sandbox, watcher, supervisor. **Rekomendasi eksplisit: jangan tulis ulang core ke Rust.** Repo sudah punya 500+ test terverifikasi; rewrite membuang semuanya. Rust hanya untuk yang TS memang tidak bisa: PTY, namespace/seccomp, watcher, daemon. ✓ API agent tidak berubah sama sekali; binary native absen → fitur yang butuh native **tidak aktif**, bukan error misterius
+
+## Fase 10 — Code intelligence (P1, belum ada)
+
+Audit source: tidak ada `tree-sitter`, tidak ada LSP, tidak ada graf repo. Urutan yang disepakati
+**tidak** dimulai dari embeddings: `ripgrep → tree-sitter → LSP → dependency graph → FTS →
+embeddings opsional`.
+
+- [ ] **10.1 (L)** Lookup simbol berbasis tree-sitter (`symbol.lookup`, `symbol.definition`, `symbol.references`). ✓ indeks dibangun dari file di dalam root saja; file di luar root ditolak; parser yang gagal membuat satu file dilewati dan **dihitung**, bukan membuat indeks kosong tanpa penjelasan
+- [ ] **10.2 (L)** Caller/importer graph (`symbol.callers`, `symbol.importers`). ✓ node tanpa node pengenal tidak pernah menghasilkan jawaban; graf bisa dibangun ulang dan hasilnya identik dua kali
+- [ ] **10.3 (M)** Repo dependency graph + `AGENTS.md` hierarkis: `repo/AGENTS.md` → `repo/sub/AGENTS.md`, semakin dekat ke file semakin spesifik. ✓ instruksi yang lebih dekat menang atas yang lebih jauh; `AGENTS.md` di luar root tidak pernah dibaca
+- [ ] **10.4 (L)** LSP (definite-definition, references, workspace symbol). ✓ server yang crash tidak pernah membuat run gagal diam-diam; timeout LSP menjadi hasil yang ditandai, bukan tebakan
+- [ ] **10.5 (M)** FTS index (SQLite) untuk pencarian isi. ✓ index bisa dibangun ulang dari nol dengan hash yang sama; **embeddings tetap ditunda** — tidak ada vector DB sebelum ada kebutuhan yang benar-benar tidak bisa dipenuhi FTS
+
 ## Urutan awal yang disarankan
+0.1 → 0.4 → 1.1 → 1.2 → 1.4 → 2.1 → 2.2 → 2.3 → 2.6## Urutan awal yang disarankan
 0.1 → 0.4 → 1.1 → 1.2 → 1.4 → 2.1 → 2.2 → 2.3 → 2.6
+
+## Urutan eksekusi pilihan (2026-09-27, hasil audit multi-agent)
+
+Audit source membagi roadmap lama menjadi "sudah ada" (kernel, plugin API, izin, budget, session,
+snapshot, trace, compaction, router, parallel tool, patch edit, report biaya, benchmark dengan negative
+acceptance) dan "tidak ada" (subagent, state machine, DAG, scheduler, messaging, integrator, context
+broker, confidence evidence-based, MCP, skills, `AGENTS.md` reader, memory, tree-sitter, LSP).
+
+Urutan pilihan **menggantikan urutan di atas sebagai urutan kerja**, bukan penomorannya:
+
+1. **9.1 bus event runtime** — fondasi yang dipakai 9.2, 9.4, 9.5, dan graph view 8.5 sekaligus.
+2. **9.2 state machine agent** → **9.3 parent/child** → **9.4 DAG** → **9.5 scheduler** → **9.6 messaging**.
+3. **9.8 verifier** sebelum 9.9 integrator: tanpa verifier, merge berarti menebak.
+4. **9.7 worktree per agent** sebelum 9.9, karena integrator tidak boleh merge tanpa workspace terpisah.
+5. **5.2 skills loader** lalu **5.1 MCP client** (ekosistem masih worthwhile dan murah dibanding 9.x).
+6. **Fase 10 code intelligence** setelah 9.5: context broker 9.10 baru berguna kalau ada simbol.
+7. **9.9 integrator** setelah 7.5, **9.11** setelah 8.4, **9.12/9.13** paling akhir.
+8. **Fase 7 self-evolve** tetap jantung dan tidak ditunda; ia hanya bergantung pada 9.1, 9.2, dan 7.5.
+
